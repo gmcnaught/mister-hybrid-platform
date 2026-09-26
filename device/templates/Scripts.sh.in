@@ -11,7 +11,9 @@
 GAMEDIR=@GAMEDIR@
 HANDLER="$GAMEDIR/launch.sh"
 HOOK=/media/fat/linux/MiSTer_hybrid
-INI=/media/fat/MiSTer.ini
+MH_INI_FILE=/media/fat/MiSTer.ini
+# shellcheck disable=SC2034  # read by platform/ini_main.sh
+MH_INI_SECTION="@CORENAME@"
 RBF_GLOB="/media/fat/_Other/@NAME@_*.rbf"
 CORENAME="@CORENAME@"
 LOGDIR=@LOGDIR@
@@ -26,11 +28,15 @@ echo "=== $(date) Scripts entry (pid $$)"
 die() { echo "launcher: $*"; exit 1; }
 
 [ -f "$HANDLER" ] || die "handler not found: $HANDLER"
+[ -r "$GAMEDIR/platform/ini_main.sh" ] || die "missing $GAMEDIR/platform/ini_main.sh -- extract the release zip over /media/fat again"
+# shellcheck disable=SC1091
+. "$GAMEDIR/platform/ini_main.sh"
 @REQUIRED_FILES@
 # update_all and zip extraction don't preserve the execute bit.
 chmod +x "$HANDLER" "$HOOK" "$GAMEDIR/@PROCESS@" 2>/dev/null
-@SCRIPTS_EXTRA@
-main_on() { [ -x "$HOOK" ] && [ -f "/media/fat/linux/hybrid.d/$CORENAME.conf" ] && grep -q "^main=$HOOK" "$INI" 2>/dev/null; }
+@LEGACY_MAIN@@SCRIPTS_EXTRA@
+# Only this core's section: every hybrid port's main= names the same hook.
+main_on() { [ -x "$HOOK" ] && [ -f "/media/fat/linux/hybrid.d/$CORENAME.conf" ] && [ "$(mh_ini_main)" = "$HOOK" ]; }
 # shellcheck disable=SC2009  # busybox pgrep -f is not guaranteed on MiSTer
 launcher_running() { ps -o args | grep -q '[@NAME_FIRST@]@NAME_REST@/launch.sh'; }
 

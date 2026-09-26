@@ -20,35 +20,24 @@
 CORENAME="@CORENAME@"
 # The MH_* overrides let a host test the MiSTer.ini edit; MiSTer never sets them.
 WRAPPER="${MH_HOOK:-/media/fat/linux/MiSTer_hybrid}"
-INI="${MH_INI:-/media/fat/MiSTer.ini}"
 REGISTRY="${MH_REGISTRY:-/media/fat/linux/hybrid.d}/$CORENAME.conf"
-MAIN_LINE="main=$WRAPPER"
+PLATFORM="${MH_PLATFORM_DIR:-@GAMEDIR@/platform}"
+MH_INI_FILE="${MH_INI:-/media/fat/MiSTer.ini}"
+# shellcheck disable=SC2034  # read by platform/ini_main.sh
+MH_INI_SECTION="$CORENAME"
 # Only the hooked build contains this path; a stock Main_MiSTer renamed to
 # MiSTer_hybrid would load the core and never start the game.
 WRAPPER_MARK="/media/fat/linux/hybrid.d"
 
 die() { echo "$*" >&2; exit 1; }
-armed() { grep -q "^$MAIN_LINE" "$INI" 2>/dev/null; }
-backup_ini() { cp "$INI" "$INI.bak.$(date +%s)" || die "could not back up $INI -- not editing it"; }
+[ -r "$PLATFORM/ini_main.sh" ] || die "not found: $PLATFORM/ini_main.sh -- extract the release zip over /media/fat again."
+# shellcheck disable=SC1091
+. "$PLATFORM/ini_main.sh"
 
-# sed to a temp file + rename (portable across busybox and BSD sed).
-ini_sed() {
-    local tmp="$INI.tmp.$$"
-    sed "$1" "$INI" > "$tmp" && mv "$tmp" "$INI" && return 0
-    rm -f "$tmp"; die "edit failed -- $INI is unchanged except for the backup"
-}
-# Insert after the first [@CORENAME@] header only (busybox sed has no 0,/re/).
-ini_insert_in_section() {
-    local tmp="$INI.tmp.$$"
-    awk -v line="$1" -v sec="[$CORENAME]" '{ print } !ins && $0 == sec { print line; ins = 1 }' "$INI" > "$tmp" \
-        && mv "$tmp" "$INI" && return 0
-    rm -f "$tmp"; die "edit failed -- $INI is unchanged except for the backup"
-}
-
-if armed; then
+# Only this core's section counts: other hybrid ports use the same main= path.
+if [ "$(mh_ini_main)" = "$WRAPPER" ]; then
     echo "Cores-menu start is currently ON. Turning it off."
-    backup_ini
-    ini_sed "s|^$MAIN_LINE.*|;$MAIN_LINE  ; disabled by @NAME@_CoresMenu|"
+    mh_ini_disable_main "$WRAPPER" "@NAME@_CoresMenu" || die "edit failed -- $MH_INI_FILE is unchanged except for the backup"
     echo "Done. Loading the core no longer starts the game; use Scripts -> @NAME@."
     exit 0
 fi
@@ -57,18 +46,13 @@ fi
 [ -f "$REGISTRY" ] || die "not found: $REGISTRY -- extract the release zip over /media/fat again."
 grep -q "$WRAPPER_MARK" "$WRAPPER" || die "$WRAPPER is not the MiSTer_hybrid build of MiSTer -- not using it."
 [ -x "$WRAPPER" ] || chmod +x "$WRAPPER" || die "could not make $WRAPPER executable"
-[ -f "$INI" ] || { echo "note: $INI did not exist -- creating it with just this section."; : > "$INI" || die "could not create $INI"; }
+[ -f "$MH_INI_FILE" ] || echo "note: $MH_INI_FILE did not exist -- creating it with just this section."
 
 echo "Turning Cores-menu start on."
-backup_ini
-# Re-enable a commented line, else add to an existing section, else append a
-# new section -- never a second [@CORENAME@] header.
-if grep -q "^;$MAIN_LINE" "$INI"; then
-    ini_sed "s|^;$MAIN_LINE.*|$MAIN_LINE|"
-elif grep -q "^\[$CORENAME\]$" "$INI"; then
-    ini_insert_in_section "$MAIN_LINE"
-else
-    printf '\n[%s]\n%s\n' "$CORENAME" "$MAIN_LINE" >> "$INI" || die "could not append to $INI"
-fi
+old=$(mh_ini_main)
+# Re-enables a commented line or replaces an older main= (e.g. a pre-platform
+# per-game wrapper) in [@CORENAME@]; never adds a second [@CORENAME@] header.
+mh_ini_set_main "$WRAPPER" || die "edit failed -- check $MH_INI_FILE (backups: $MH_INI_FILE.bak.*)"
+[ -n "$old" ] && echo "Replaced main=$old"
 echo "Done. Loading @CORENAME@ from the core list (_Other) now starts the game."
-echo "Run this entry again to undo. Backups: $INI.bak.*"
+echo "Run this entry again to undo. Backups: $MH_INI_FILE.bak.*"

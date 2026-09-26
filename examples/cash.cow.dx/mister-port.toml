@@ -16,3 +16,4 @@ env = { MISTER_FABRIC = "1", MISTER_FABRIC_LIB = "$MH_GAMEDIR/libmisterfabric.so
 
 [scripts]
 required_files = [ ["CashCowDX.pck", "copy it from your GOG install (see README.md)"] ]
+legacy_main    = ["/media/fat/games/CashCowDX/MiSTer_CashCowDX"]

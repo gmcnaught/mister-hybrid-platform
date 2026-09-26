@@ -31,8 +31,11 @@ has "$F/_Other/CashCowDX.mgl" "<rbf>_Other/CashCowDX</rbf>" "mgl rbf prefix"
 has "$F/Scripts/CashCowDX.sh" "missing \$GAMEDIR/CashCowDX.pck -- copy it from your GOG install" "required file check"
 
 # --- CoresMenu toggle: on, off, on again (re-enables the commented line) --------
-INI="$T/MiSTer.ini"; printf '[MiSTer]\nvideo_mode=8\n' > "$INI"
-cm() { env MH_HOOK="$F/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$F/linux/hybrid.d" bash "$F/Scripts/CashCowDX_CoresMenu.sh" >/dev/null 2>&1; }
+INI="$T/MiSTer.ini"
+# Another port already on the shared hook: its section must not read as ours.
+printf '[MiSTer]\nvideo_mode=8\n[DonutDodo]\nmain=%s\n' "$F/linux/MiSTer_hybrid" > "$INI"
+cm() { env MH_HOOK="$F/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$F/linux/hybrid.d" \
+    MH_PLATFORM_DIR="$F/games/CashCowDX/platform" bash "$F/Scripts/CashCowDX_CoresMenu.sh" >/dev/null 2>&1; }
 cm && ok || bad "toggle on rc"
 has "$INI" "^\[CashCowDX\]$" "toggle on: section"
 has "$INI" "^main=$F/linux/MiSTer_hybrid$" "toggle on: main line"
@@ -42,8 +45,16 @@ cm && ok || bad "toggle on again rc"
 [ "$(grep -c '^\[CashCowDX\]$' "$INI")" = 1 ] && ok || bad "toggle: duplicated section"
 has "$INI" "^main=$F/linux/MiSTer_hybrid$" "toggle on again: main line"
 ls "$INI".bak.* >/dev/null 2>&1 && ok || bad "toggle: no backup"
+[ "$(grep -c "^main=$F/linux/MiSTer_hybrid$" "$INI")" = 2 ] && ok || bad "toggle touched the DonutDodo section"
+# Pre-platform wrapper in the section: toggle-on replaces it in place.
+printf '[CashCowDX]\nmain=/media/fat/games/CashCowDX/MiSTer_CashCowDX\n' > "$INI"
+cm && ok || bad "toggle over legacy rc"
+has "$INI" "^main=$F/linux/MiSTer_hybrid$" "toggle over legacy: main line"
+has "$INI" "^\[CashCowDX\]$" "toggle over legacy: section kept"
+grep -q "^main=/media/fat/games/CashCowDX/MiSTer_CashCowDX" "$INI" && bad "legacy main= still active" || ok
+has "$F/Scripts/CashCowDX.sh" 'case "$old_main" in /media/fat/games/CashCowDX/MiSTer_CashCowDX)' "Scripts: legacy migration"
 printf 'stock MiSTer' > "$T/stock"
-env MH_HOOK="$T/stock" MH_INI="$T/other.ini" MH_REGISTRY="$F/linux/hybrid.d" bash "$F/Scripts/CashCowDX_CoresMenu.sh" >/dev/null 2>&1 \
+env MH_HOOK="$T/stock" MH_INI="$T/other.ini" MH_REGISTRY="$F/linux/hybrid.d" MH_PLATFORM_DIR="$F/games/CashCowDX/platform" bash "$F/Scripts/CashCowDX_CoresMenu.sh" >/dev/null 2>&1 \
     && bad "toggle accepted a stock MiSTer binary" || ok
 
 # --- the rendered launcher, against stubs -------------------------------------

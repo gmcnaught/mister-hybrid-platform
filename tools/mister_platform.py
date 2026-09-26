@@ -7,7 +7,7 @@
 `render` writes a tree that mirrors /media/fat, ready to merge into a release zip:
 
     games/<name>/launch.sh                  thin launcher -> platform/launch_lib.sh
-    games/<name>/platform/                  launch_lib.sh, mem_wc_load.sh, profile .env,
+    games/<name>/platform/                  launch_lib.sh, mem_wc_load.sh, ini_main.sh, profile .env,
                                             mister_mem_wc.env, mister_cores.tsv, mem_wc/*.ko
     linux/hybrid.d/<corename>.conf          MiSTer_hybrid registry entry
     linux/MiSTer_hybrid                     only with --hook-binary
@@ -35,6 +35,9 @@ Manifest (mister-port.toml):
     [scripts]
     required_files = [ ["CashCowDX.pck", "copy it from your GOG install (see README.md)"] ]
     extra          = "dist/scripts-extra.sh"  # optional snippet, relative to the manifest
+    legacy_main    = ["/media/fat/games/CashCowDX/MiSTer_CashCowDX"]
+                     # pre-platform per-game main= wrappers: the Scripts entry moves
+                     # [corename] main= from one of these to MiSTer_hybrid, then deletes it
 
 Command arguments and env values are emitted inside double quotes, so $MH_GAMEDIR
 and other launcher variables expand; ", \\ and ` are escaped.
@@ -148,6 +151,25 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     extra = ""
     if "extra" in scripts:
         extra = "\n# --- port-specific (mister-port.toml [scripts] extra) ---\n" + (m["_dir"] / scripts["extra"]).read_text()
+    legacy = scripts.get("legacy_main", [])
+    for p in legacy:
+        if not re.match(r"^/media/fat/[A-Za-z0-9_./-]+$", p):
+            raise ManifestError(f"[scripts] legacy_main {p!r}: expected an absolute /media/fat path")
+    legacy_main = ""
+    if legacy:
+        pats = "|".join(legacy)
+        legacy_main = (
+            "\n# --- pre-platform main= wrapper -> MiSTer_hybrid (mister-port.toml legacy_main) ---\n"
+            "if [ -x \"$HOOK\" ] && [ -f \"/media/fat/linux/hybrid.d/$CORENAME.conf\" ]; then\n"
+            "\told_main=$(mh_ini_main)\n"
+            f"\tcase \"$old_main\" in {pats})\n"
+            "\t\tmh_ini_set_main \"$HOOK\" && echo \"launcher: MiSTer.ini [$CORENAME] main=$old_main -> $HOOK\" ;;\n"
+            "\tesac\n"
+            "\t# shellcheck disable=SC2043  # one entry per legacy wrapper; often just one\n"
+            f"\tfor w in {' '.join(legacy)}; do\n"
+            "\t\t[ -f \"$w\" ] && ! grep -q \"^main=$w\" \"$MH_INI_FILE\" 2>/dev/null && rm -f \"$w\" && echo \"launcher: removed $w\"\n"
+            "\tdone\n"
+            "fi\n")
     values = {
         "NAME": name, "TITLE": port["title"], "CORENAME": port["corename"], "PROFILE": prof.name,
         "GAMEDIR": gamedir, "LOGDIR": logdir, "PROCESS": launch["process"],
@@ -160,6 +182,7 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         "ENV_EXPORTS": "\n".join(env_lines),
         "REQUIRED_FILES": "\n".join(req),
         "SCRIPTS_EXTRA": extra,
+        "LEGACY_MAIN": legacy_main,
         "PLATFORM_VERSION": platform_version(),
     }
     written: list[Path] = []
@@ -177,7 +200,7 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
 
     plat = out / "games" / name / "platform"
     gen = ROOT / "spec" / "generated"
-    for src in [ROOT / "device/sh/launch_lib.sh", ROOT / "device/sh/mem_wc_load.sh",
+    for src in [ROOT / "device/sh/launch_lib.sh", ROOT / "device/sh/mem_wc_load.sh", ROOT / "device/sh/ini_main.sh",
                 gen / f"mister_map_{prof.name.replace('-', '_')}.env", gen / "mister_mem_wc.env",
                 gen / "mister_cores.tsv"]:
         plat.mkdir(parents=True, exist_ok=True)

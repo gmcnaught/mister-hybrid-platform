@@ -297,7 +297,8 @@ mh_cleanup() {
 mh_watchdog() {
     local cur
     while kill -0 "$MH_ENGINE_PID" 2>/dev/null; do
-        cur=$(mh_corename)
+        # read, not $(mh_corename): no fork per second next to the engine (cash.cow PLAN §6.25)
+        cur=""; read -r cur < "$MH_ROOT/tmp/CORENAME" 2>/dev/null
         if [ "$cur" != "$MH_CORENAME" ]; then
             mh_log "watchdog: core changed to '$cur' -- stopping the engine"
             mh_stop_engine
