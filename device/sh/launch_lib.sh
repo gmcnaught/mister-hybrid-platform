@@ -27,6 +27,9 @@
 #   MH_READY_TIMEOUT (60)  MH_GATE_WINDOW (8)  MH_MAX_RETRIES (4)
 #   MH_ENGINE_CPU (2)      taskset mask the engine starts on (it pins its own main thread)
 #   MH_TEST_ENV (/tmp/<name>_test.env)  sourced if present -- measurement hook
+#
+# Everything before the engine starts avoids forks where a builtin does: each
+# fork costs ~10-25 ms on the A9 while MiSTer loads the core (cash.cow PLAN §6.28).
 #   MH_MAIN_HOOK (/media/fat/linux/MiSTer_hybrid)
 #   MH_LEGACY_ENGINES      process names of fabric engines that predate the
 #                          shared claim file (default below)
@@ -42,7 +45,7 @@ MH_CLAIM="$MH_STATE_DIR/engine.claim"
 mh_log() { echo "[$MH_NAME] $*"; }
 mh_nap() { sleep "$1" & wait $!; }        # interruptible: SIGTERM runs the trap now
 mh_devmem() { ${MH_DEVMEM:-busybox devmem} "$1" 32 2>/dev/null; }
-mh_corename() { local c=""; read -r c < "$MH_ROOT/tmp/CORENAME" 2>/dev/null; echo "$c"; }
+mh_corename() { local c=""; read -r c 2>/dev/null < "$MH_ROOT/tmp/CORENAME"; echo "$c"; }
 
 mh_defaults() {
     : "${MH_NAME:?}" "${MH_CORENAME:?}" "${MH_PROFILE:?}" "${MH_GAMEDIR:?}" "${MH_ENGINE:?}"
@@ -56,9 +59,9 @@ mh_defaults() {
     MH_GATE_WINDOW=${MH_GATE_WINDOW:-8}
     MH_MAX_RETRIES=${MH_MAX_RETRIES:-4}
     MH_ENGINE_CPU=${MH_ENGINE_CPU:-2}
-    MH_TEST_ENV=${MH_TEST_ENV:-$MH_ROOT/tmp/$(echo "$MH_NAME" | tr '[:upper:]' '[:lower:]')_test.env}
+    MH_TEST_ENV=${MH_TEST_ENV:-$MH_ROOT/tmp/${MH_NAME,,}_test.env}
     MH_MAIN_HOOK=${MH_MAIN_HOOK:-/media/fat/linux/MiSTer_hybrid}
-    MH_LOG="$MH_LOGDIR/$(echo "$MH_NAME" | tr '[:upper:]' '[:lower:]').log"
+    MH_LOG="$MH_LOGDIR/${MH_NAME,,}.log"
     MH_LOCKDIR="$MH_STATE_DIR/$MH_NAME.lock"
     MH_RETRY_MARK="$MH_STATE_DIR/$MH_NAME.retry"
 }
@@ -66,8 +69,8 @@ mh_defaults() {
 # Profile constants from spec/generated (shipped into $MH_PLATFORM_DIR).
 mh_load_profile() {
     local p env
-    p=$(echo "$MH_PROFILE" | tr '[:lower:]-' '[:upper:]_')
-    env="$MH_PLATFORM_DIR/mister_map_$(echo "$MH_PROFILE" | tr '-' '_').env"
+    p=${MH_PROFILE^^}; p=${p//-/_}
+    env="$MH_PLATFORM_DIR/mister_map_${MH_PROFILE//-/_}.env"
     if [ ! -r "$env" ]; then
         mh_log "profile map $env missing -- packaging error"
         return 1
@@ -87,16 +90,19 @@ mh_load_profile() {
 # A core in the wrong profile has a different DDR map: every address would be
 # silently wrong (donut PLAN §1i), so refuse rather than start.
 mh_check_core() {
-    local cur want
-    cur=$(mh_corename)
+    local cur="" want c prof
+    read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
     if [ "$cur" != "$MH_CORENAME" ]; then
-        mh_log "core is '$cur', not $MH_CORENAME -- not starting"
+        mh_log "$(date) core is '$cur', not $MH_CORENAME -- not starting"
         return 1
     fi
     if [ -r "$MH_PLATFORM_DIR/mister_cores.tsv" ]; then
-        want=$(awk -F'\t' -v c="$cur" '$1 == c { print $2 }' "$MH_PLATFORM_DIR/mister_cores.tsv")
+        want=""
+        while IFS=$'\t' read -r c prof; do
+            if [ "$c" = "$cur" ]; then want=$prof; break; fi
+        done < "$MH_PLATFORM_DIR/mister_cores.tsv"
         if [ "$want" != "$MH_PROFILE" ]; then
-            mh_log "core $cur is profile '${want:-unknown}', engine built for '$MH_PROFILE' -- refusing (DDR map mismatch)"
+            mh_log "$(date) core $cur is profile '${want:-unknown}', engine built for '$MH_PROFILE' -- refusing (DDR map mismatch)"
             return 2
         fi
     else
@@ -129,7 +135,7 @@ mh_kill_pid() { # pid label
 # The claim file names the engine that owns the fabric; the legacy name list
 # covers ports that do not write it yet.
 mh_stop_other_engines() {
-    local pid name core
+    local pid name core names=" "
     if [ -r "$MH_CLAIM" ]; then
         read -r pid name core < "$MH_CLAIM"
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -138,16 +144,19 @@ mh_stop_other_engines() {
         rm -f "$MH_CLAIM"
     fi
     for name in $MH_ENGINE $MH_LEGACY_ENGINES; do
-        for pid in $(pidof "$name" 2>/dev/null); do
-            mh_kill_pid "$pid" "$name"
-        done
+        case "$names" in *" $name "*) ;; *) names="$names$name " ;; esac
+    done
+    # shellcheck disable=SC2086  # one pidof for every name
+    for pid in $(pidof $names 2>/dev/null); do
+        name=""; read -r name 2>/dev/null < "$MH_ROOT/proc/$pid/comm"
+        mh_kill_pid "$pid" "${name:-engine}"
     done
 }
 
 mh_claim() { echo "$1 $MH_ENGINE $MH_CORENAME" > "$MH_CLAIM"; }
 mh_unclaim() {
     local pid _
-    read -r pid _ < "$MH_CLAIM" 2>/dev/null
+    read -r pid _ 2>/dev/null < "$MH_CLAIM"
     [ "$pid" = "$1" ] && rm -f "$MH_CLAIM"
 }
 
@@ -298,7 +307,7 @@ mh_watchdog() {
     local cur
     while kill -0 "$MH_ENGINE_PID" 2>/dev/null; do
         # read, not $(mh_corename): no fork per second next to the engine (cash.cow PLAN §6.25)
-        cur=""; read -r cur < "$MH_ROOT/tmp/CORENAME" 2>/dev/null
+        cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
         if [ "$cur" != "$MH_CORENAME" ]; then
             mh_log "watchdog: core changed to '$cur' -- stopping the engine"
             mh_stop_engine
@@ -315,10 +324,9 @@ mh_main() {
     # shellcheck disable=SC1090
     [ -f "$MH_TEST_ENV" ] && . "$MH_TEST_ENV"
     cd "$MH_GAMEDIR" || exit 1
-    local out rc
-    out=$(mh_check_core); rc=$?
+    local rc
+    mh_check_core >> "$MH_LOGDIR/launch.log"; rc=$?
     if [ $rc -ne 0 ]; then
-        echo "$(date) $out" >> "$MH_LOGDIR/launch.log"
         [ $rc = 1 ] && exit 0      # not our core: nothing to do
         exit 1                     # our core, wrong profile: refuse
     fi
@@ -328,7 +336,8 @@ mh_main() {
 
     mv -f "$MH_LOG" "${MH_LOG%.log}.prev.log" 2>/dev/null
     exec >> "$MH_LOG" 2>&1
-    mh_log "=== $(date) launcher pid $$ core=$(mh_corename) profile=$MH_PROFILE kernel=$(uname -r)"
+    local kver=""; read -r kver 2>/dev/null < /proc/sys/kernel/osrelease
+    mh_log "=== $(date) launcher pid $$ core=$MH_CORENAME profile=$MH_PROFILE kernel=${kver:-?}"
 
     mh_wait_fpga_ready
     mh_mem_wc
@@ -336,8 +345,8 @@ mh_main() {
     trap mh_cleanup EXIT
     trap 'exit 130' INT TERM HUP
 
-    local attempt
-    attempt=$(cat "$MH_RETRY_MARK" 2>/dev/null); case "$attempt" in ''|*[!0-9]*) attempt=0 ;; esac
+    local attempt=""
+    read -r attempt 2>/dev/null < "$MH_RETRY_MARK"; case "$attempt" in ''|*[!0-9]*) attempt=0 ;; esac
     # The port's engine environment (rendered launch.sh), after the profile map.
     if declare -F mh_port_env >/dev/null; then mh_port_env; fi
     mh_start_engine
@@ -357,7 +366,9 @@ mh_main() {
     fi
     rm -f "$MH_RETRY_MARK"
 
+    # mh_stop_engine clears MH_ENGINE_PID; wait on the saved pid for the real status.
+    local epid=$MH_ENGINE_PID
     mh_watchdog
-    wait "$MH_ENGINE_PID" 2>/dev/null
+    wait "$epid" 2>/dev/null
     mh_log "engine: exited ($?)"
 }

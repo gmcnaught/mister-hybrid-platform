@@ -90,6 +90,8 @@ echo MENU > "$R/tmp/CORENAME"
 for _ in $(seq 1 100); do kill -0 "$LPID" 2>/dev/null || break; sleep 0.1; done
 wait "$LPID" 2>/dev/null; LPID=""
 has "$LOG" "watchdog: core changed" "rendered: watchdog"
+# The stub engine exits 0 on TERM; before the saved-pid fix this read "exited (1)" (wait "").
+has "$LOG" "engine: exited (0)" "rendered: engine exit status"
 
 echo "render: $pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -45,15 +45,5 @@ expect = "legacy"
 file = "src/godot/platform/linuxbsd/mister/joypad_mister.cpp"
 pattern = "JOY_BASE_DEFAULT\\s*=\\s*(0x[0-9A-Fa-f]+)"
 expect = "fb"
-[[check]]
-file = "dist/games/CashCowDX/launch.sh"
-pattern = "^FABRIC_CTRL=(0x[0-9A-Fa-f]+)"
-expect = "fabric.BLTCTRL"
-[[check]]
-file = "dist/games/CashCowDX/launch.sh"
-pattern = "^FABRIC_DONE=(0x[0-9A-Fa-f]+)"
-value = 0x3B000028   # fabric.BLTCTRL + 8 * ctrl.C_DONE
-[[check]]
-file = "dist/games/CashCowDX/launch.sh"
-pattern = "phys_size=(0x[0-9A-Fa-f]+)"
-expect = "mem_wc.size"
+# launch.sh is rendered from mister-port.toml since the platform migration: its
+# fabric/mem_wc addresses come from spec/generated, so there is nothing hand-typed to check.

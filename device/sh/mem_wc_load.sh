@@ -35,8 +35,8 @@ _mh_log() { echo "mem_wc: $*" >&2; }
 mh_mem_wc_covers() {
     _p="$MH_ROOT/sys/module/mem_wc/parameters"
     [ -r "$_p/phys_size" ] || return 1
-    _sz=$(cat "$_p/phys_size" 2>/dev/null) || return 1
-    _bs=$(cat "$_p/phys_base" 2>/dev/null) || return 1
+    read -r _sz 2>/dev/null < "$_p/phys_size" || return 1
+    read -r _bs 2>/dev/null < "$_p/phys_base" || return 1
     [ "$_sz" -eq 0 ] 2>/dev/null && return 0
     [ "$_bs" -le $(($1)) ] 2>/dev/null || return 1
     [ $((_bs + _sz)) -ge $(($1 + $2)) ] 2>/dev/null || return 1

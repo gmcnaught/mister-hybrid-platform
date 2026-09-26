@@ -34,7 +34,7 @@ shift; exec "$@"
 EOF
 cat > "$T/bin/pidof" <<'EOF'
 #!/bin/sh
-cat "$MH_ROOT/pidof/$1" 2>/dev/null
+for n in "$@"; do cat "$MH_ROOT/pidof/$n" 2>/dev/null; done
 EOF
 cat > "$T/bin/setsid" <<'EOF'
 #!/bin/sh
