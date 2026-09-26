@@ -304,20 +304,30 @@ mh_reload_core() {
         sleep 2
         grep -q "^main=$4" "$r/media/fat/MiSTer.ini" 2>/dev/null || exec "$3"
     ' reload "$rbf" "$MH_CORENAME" "$0" "$MH_MAIN_HOOK" "$MH_ROOT" < /dev/null >> "$MH_LOG" 2>&1 &
+    # Not our job any more: it may exec the next launcher, which runs for a whole
+    # session, and mh_cleanup must not wait for it.
+    disown $!
     # Hold until the core is gone, so this launcher exits before the next one starts.
     while [ "$(mh_corename)" = "$MH_CORENAME" ] && [ $waited -lt 20 ]; do mh_nap 1; waited=$((waited+1)); done
 }
 
 mh_cleanup() {
     # Background the slow parts: a SIGKILL of this script must not skip them.
+    local pids=""
     if [ -n "${MH_ENGINE_PID:-}" ]; then
         kill "$MH_ENGINE_PID" 2>/dev/null
         ( sleep 2; kill -9 "$MH_ENGINE_PID" 2>/dev/null ) &
+        pids="$!"
         mh_unclaim "$MH_ENGINE_PID"
     fi
     mh_cpu_restore &
+    pids="$pids $!"
     rm -rf "$MH_LOCKDIR"
-    wait
+    # Only these two: a bare wait also waited for the engine's log pipe and any
+    # other child (a gate-retry reload helper kept the old launcher alive for the
+    # whole next session).
+    # shellcheck disable=SC2086
+    wait $pids
 }
 
 # Stop the engine when another core is loaded from the OSD. With MH_STALL_S,
