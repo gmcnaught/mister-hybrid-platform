@@ -11,6 +11,7 @@
 GAMEDIR=@GAMEDIR@
 HANDLER="$GAMEDIR/launch.sh"
 HOOK=/media/fat/linux/MiSTer_hybrid
+# shellcheck disable=SC2034  # read by platform/ini_main.sh
 MH_INI_FILE=/media/fat/MiSTer.ini
 # shellcheck disable=SC2034  # read by platform/ini_main.sh
 MH_INI_SECTION="@CORENAME@"

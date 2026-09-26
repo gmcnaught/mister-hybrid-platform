@@ -114,7 +114,5 @@ file = "patches/mister/native_audio_writer.c"
 pattern = "#define NA_RING_OFFSET\\s+(0x[0-9A-Fa-f]+)u?"
 expect = "legacy.AUDIO_RING"
 unit = "off"
-[[check]]
-file = "games/Solarus/solarus_run.sh"
-pattern = "^WC_SIZE=(0x[0-9A-Fa-f]+)"
-expect = "mem_wc.size"
+# The mem_wc window is no longer hand-typed: launch.sh (mister-port.toml) takes it
+# from this profile.

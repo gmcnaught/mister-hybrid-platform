@@ -93,5 +93,16 @@ has "$LOG" "watchdog: core changed" "rendered: watchdog"
 # The stub engine exits 0 on TERM; before the saved-pid fix this read "exited (1)" (wait "").
 has "$LOG" "engine: exited (0)" "rendered: engine exit status"
 
+# --- OSD file-select manifest (examples/solarus) -------------------------------
+S="$T/sol"
+python3 "$PLAT/tools/mister_platform.py" render "$PLAT/examples/solarus/mister-port.toml" --out "$S" > /dev/null && ok || bad "solarus render failed"
+if command -v shellcheck >/dev/null; then
+    shellcheck -s bash "$S/games/Solarus/launch.sh" "$S"/Scripts/*.sh && ok || bad "shellcheck on rendered solarus scripts"
+fi
+has "$S/games/Solarus/launch.sh" 'MH_SELECT_FILE="${MH_ROOT:-}/media/fat/config/Solarus.s0"' "select: file line"
+has "$S/games/Solarus/launch.sh" '^MH_SELECT_EXT="sol"$' "select: ext line"
+has "$S/games/Solarus/launch.sh" 'MH_ENGINE_CMD=("./solarus_start.sh" "$MH_SELECTED")' "select: command in mh_port_env"
+grep -q MH_SELECT_FILE "$F/games/CashCowDX/launch.sh" && bad "select lines rendered for a manifest without [launch.select]" || ok
+
 echo "render: $pass passed, $fail failed"
 [ "$fail" = 0 ]
