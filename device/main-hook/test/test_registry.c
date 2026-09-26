@@ -1,4 +1,5 @@
 /* Host test for hybrid_registry.c: cc -I../overlay ../overlay/hybrid_registry.c test_registry.c */
+#define _DEFAULT_SOURCE  /* glibc: mkdtemp, setenv under -std=c11 (macOS declares them already) */
 #include "hybrid_registry.h"
 
 #include <stdio.h>

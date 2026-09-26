@@ -6,7 +6,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 . "$HERE/../device/sh/ini_main.sh"
 T=$(mktemp -d); trap 'rm -rf "$T"' EXIT
 pass=0 fail=0
-eq() { if [ "$1" = "$2" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL $3: got '$1' want '$2'"; cat "$MH_INI_FILE" | sed 's/^/    | /'; fi; }
+eq() { if [ "$1" = "$2" ]; then pass=$((pass+1)); else fail=$((fail+1)); echo "FAIL $3: got '$1' want '$2'"; sed 's/^/    | /' "$MH_INI_FILE"; fi; }
 H=/media/fat/linux/MiSTer_hybrid
 MH_INI_FILE="$T/MiSTer.ini"
 
