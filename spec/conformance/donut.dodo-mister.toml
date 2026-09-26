@@ -1,0 +1,75 @@
+# gm-fabric constants hand-typed in donut.dodo-mister.
+profile = "gm-fabric"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_PHYS_BASE\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_MAP_SIZE\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric"
+unit = "size"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_RING_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.RING_A"
+unit = "off"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_RING_B_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.RING_B"
+unit = "off"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_SRC_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.SRC"
+unit = "off"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_TLBUF_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.TLBUF"
+unit = "off"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_SCANFRM_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+value = 0x00FB0018   # fb.SCANFRM relative to the fabric window
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_WC_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+value = 0x00001000   # mem_wc.wc_ranges[0] lo - fabric base
+[[check]]
+file = "patches/0004-sdl2-mister-audio.patch"
+pattern = "#define MA_DDR_PHYS_BASE (0x[0-9A-Fa-f]+)u"
+expect = "legacy"
+[[check]]
+file = "patches/0004-sdl2-mister-audio.patch"
+pattern = "#define MA_WR_PTR_OFF\\s+(0x[0-9A-Fa-f]+)u"
+expect = "legacy.AUDIO_WR"
+unit = "off"
+[[check]]
+file = "patches/0004-sdl2-mister-audio.patch"
+pattern = "#define MA_RD_PTR_OFF\\s+(0x[0-9A-Fa-f]+)u"
+expect = "legacy.AUDIO_RD"
+unit = "off"
+[[check]]
+file = "patches/0004-sdl2-mister-audio.patch"
+pattern = "#define MA_RING_OFF\\s+(0x[0-9A-Fa-f]+)u"
+expect = "legacy.AUDIO_RING"
+unit = "off"
+[[check]]
+file = "patches/0005-sdl2-mister-joystick.patch"
+pattern = "#define MISTER_JOY_DDR_BASE_DEFAULT (0x[0-9A-Fa-f]+)u"
+expect = "fb"
+[[check]]
+file = "patches/0005-sdl2-mister-joystick.patch"
+pattern = "#define MISTER_JOY_P2_OFF\\s+(0x[0-9A-Fa-f]+)u"
+expect = "fb.JOY_P2"
+unit = "off"
+[[check]]
+file = "dist/games/DonutDodo/launch.sh"
+pattern = "^FABRIC_DONE=(0x[0-9A-Fa-f]+)"
+value = 0x3B000028
+[[check]]
+file = "dist/games/DonutDodo/launch.sh"
+pattern = "phys_size=(0x[0-9A-Fa-f]+)"
+expect = "mem_wc.size"

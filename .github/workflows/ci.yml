@@ -1,0 +1,63 @@
+name: ci
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: generated output is current
+        run: python3 spec/gen.py --check
+      - name: spec / generator / conformance tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: generated headers compile (C11 + C++17)
+        run: |
+          cc  -std=c11   -Wall -Wextra -Werror -Ispec/generated tests/smoke_profiles.c -o t && ./t
+          c++ -std=c++17 -Wall -Wextra -Werror -Ispec/generated -x c++ tests/smoke_profiles.c -o t && ./t
+
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get install -y -qq dash shellcheck iverilog
+      - run: dash tests/test_mem_wc_load.sh
+      - run: sh tests/test_build_flags.sh
+      - run: sh tests/test_sv_headers.sh
+      - run: shellcheck -s sh device/sh/*.sh tests/*.sh
+      - run: shellcheck build/scripts/*.sh device/mem_wc/build.sh
+
+  docker-base:
+    runs-on: ubuntu-latest
+    needs: [spec, shell]
+    permissions: { contents: read, packages: write }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        if: github.event_name == 'push'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: build (push on main / tags)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: build/docker/Dockerfile.base
+          push: ${{ github.event_name == 'push' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/mister-armhf-base:bullseye
+            ghcr.io/${{ github.repository_owner }}/mister-armhf-base:${{ github.sha }}
+      - name: smoke-test the cross compiler
+        if: github.event_name == 'push'
+        run: |
+          docker run --rm -v "$PWD:/src" ghcr.io/${{ github.repository_owner }}/mister-armhf-base:${{ github.sha }} sh -ec '
+            arm-linux-gnueabihf-gcc -std=c11 -Wall -Werror -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard \
+              -Ispec/generated tests/smoke_profiles.c -o /tmp/t
+            file /tmp/t | grep -q "ARM, EABI5" && echo armhf-ok'

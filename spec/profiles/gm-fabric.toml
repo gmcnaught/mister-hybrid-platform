@@ -1,0 +1,101 @@
+# gm-fabric — the maldita.castilla-mister core (also shipped, same RTL, as the
+# Cursed Castilla, Donut Dodo and Cash Cow DX RBFs via core_variant).
+#
+# Differences from openbor-classic that bite:
+#  * The framebuffer/control/joystick block is RELOCATED to 0x3BF40000
+#    (Maldita.sv FB_QW_BASE = 29'h077E8000). The 0x3A000000 VCTRL/BUF0/BUF1 are
+#    NOT scanned out on this core.
+#  * The scanout counter is SCANFRM at 0x3BFB0018, not 0x3A070000.
+#  * Audio still uses the 0x3A000000 block (gm_audio.sv).
+# Sources: maldita fpga/rtl/blitter_defs.vh, fpga/Maldita.sv:226,
+#          fpga/rtl/openbor_video_reader.sv, fpga/rtl/gm_audio.sv,
+#          gmloader-next gmloader/mister/raster_backend_mfgpu.cpp (MF_DEV_*),
+#          joy_ddr_reader.cpp, native_audio_writer.c.
+name        = "gm-fabric"
+description = "Maldita-family blitter core: 16 MiB fabric window at 0x3B000000, FB/joy block relocated to 0x3BF40000"
+cores       = ["MalditaCastilla", "CursedCastilla", "DonutDodo", "CashCowDX"]
+fb_default  = [288, 216]   # branch donutdodo/fb-320x240 builds 320x240
+
+[regions.legacy]
+base = 0x3A000000
+size = 0x00100000
+
+[regions.legacy.fields]
+VCTRL      = 0x00000   # diagnostic only on this core (donut MISTER_GLUE_PUBLISH)
+AUDIO_WR   = 0x00030
+AUDIO_RD   = 0x00038
+JOY_INJECT = 0xC0000   # test-only scripted-input page (cash.cow scripts/stutter/joy_inject.py)
+AUDIO_RING = 0xD0000
+
+[regions.legacy.sizes]
+AUDIO_RING = 0x10000
+
+[regions.fabric]
+base = 0x3B000000
+size = 0x01000000
+
+[regions.fabric.fields]
+BLTCTRL = 0x000000     # control block, 8 qwords (see [ctrl])
+RING_A  = 0x000040
+RING_B  = 0x040000     # selected by C_SRCSEL bit 2
+SRC     = 0x080000     # DDR source/texture heap
+TLBUF   = 0xF40000     # == start of the relocated FB block below
+
+[regions.fabric.sizes]
+BLTCTRL = 0x00040
+RING_A  = 0x3FFC0
+RING_B  = 0x40000
+SRC     = 0xEC0000
+
+[regions.fb]
+base   = 0x3BF40000
+size   = 0x000C0000    # to 0x3C000000
+within = "fabric"      # lies inside the fabric window at TLBUF
+
+[regions.fb.fields]
+CTRL    = 0x00000
+JOY_P1  = 0x00008
+JOY_P2  = 0x00018
+BUF0    = 0x00040
+BUF1    = 0x40040
+VSYNC   = 0x70000
+SCANFRM = 0x70018      # displayed-frame counter read by the pacer
+DIAG    = 0xB0000
+
+[regions.fb.sizes]
+BUF0 = 0x40000
+BUF1 = 0x2FFC0
+
+[ctrl]                 # qword index within BLTCTRL
+C_SUBMIT   = 0
+C_CMDCOUNT = 1
+C_TARGET   = 2
+C_CLEAR    = 3
+C_FLAGS    = 4
+C_DONE     = 5
+C_STATUS   = 6
+C_SRCSEL   = 7
+
+[mem_wc]
+# Allowlist this core needs, and the page-exact write-combining sub-ranges.
+# BLTCTRL page and the fabric-written tail (TLBUF..end) stay strongly-ordered.
+base = 0x3B000000
+size = 0x01000000
+wc_ranges = [ [0x3B001000, 0x3BF40000] ]
+
+[audio]
+rate     = 48000
+channels = 2
+format   = "S16LE"
+
+[roles]
+video_ctrl      = "fb.CTRL"
+fb_buf0         = "fb.BUF0"
+fb_buf1         = "fb.BUF1"
+joy_p1          = "fb.JOY_P1"
+joy_p2          = "fb.JOY_P2"
+audio_wr        = "legacy.AUDIO_WR"
+audio_rd        = "legacy.AUDIO_RD"
+audio_ring      = "legacy.AUDIO_RING"
+scanout_counter = "fb.SCANFRM"
+fabric_ctrl     = "fabric.BLTCTRL"

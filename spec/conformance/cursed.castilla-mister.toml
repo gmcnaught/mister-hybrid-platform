@@ -1,0 +1,119 @@
+# Hand-typed gm-fabric constants in cursed.castilla-mister (rebrand fork of maldita).
+profile = "gm-fabric"
+
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+BLTCTRL_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.BLTCTRL"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+RING_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.RING_A"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+RING_B_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.RING_B"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+SRC_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.SRC"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+VCTRL_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "legacy.VCTRL"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+FB_W\\s+(\\d+)"
+expect = "fb_default.w"
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+FB_H\\s+(\\d+)"
+expect = "fb_default.h"
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+C_SUBMIT\\s+29'd(\\d+)"
+expect = "ctrl.C_SUBMIT"
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+C_DONE\\s+29'd(\\d+)"
+expect = "ctrl.C_DONE"
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+C_STATUS\\s+29'd(\\d+)"
+expect = "ctrl.C_STATUS"
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+C_SRCSEL\\s+29'd(\\d+)"
+expect = "ctrl.C_SRCSEL"
+[[check]]
+file = "fpga/CursedCastilla.sv"
+pattern = "localparam \\[28:0\\] FB_QW_BASE = 29'h([0-9A-Fa-f]+)"
+expect = "fb"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "JOY0_ADDR\\s*=\\s*FB_QW_BASE \\+ 29'h([0-9A-Fa-f]+)"
+expect = "fb.JOY_P1"
+unit = "qw_off"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "JOY1_ADDR\\s*=\\s*FB_QW_BASE \\+ 29'h([0-9A-Fa-f]+)"
+expect = "fb.JOY_P2"
+unit = "qw_off"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "BUF0_ADDR\\s*=\\s*FB_QW_BASE \\+ 29'h([0-9A-Fa-f]+)"
+expect = "fb.BUF0"
+unit = "qw_off"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "BUF1_ADDR\\s*=\\s*FB_QW_BASE \\+ 29'h([0-9A-Fa-f]+)"
+expect = "fb.BUF1"
+unit = "qw_off"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "VSYNC_ADDR\\s*=\\s*FB_QW_BASE \\+ 29'h([0-9A-Fa-f]+)"
+expect = "fb.VSYNC"
+unit = "qw_off"
+radix = 16
+[[check]]
+file = "fpga/rtl/gm_audio.sv"
+pattern = "RING_QW\\s*=\\s*29'h([0-9A-Fa-f]+)"
+expect = "legacy.AUDIO_RING"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/gm_audio.sv"
+pattern = "WPTR_QW\\s*=\\s*29'h([0-9A-Fa-f]+)"
+expect = "legacy.AUDIO_WR"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/gm_audio.sv"
+pattern = "RDPTR_QW\\s*=\\s*29'h([0-9A-Fa-f]+)"
+expect = "legacy.AUDIO_RD"
+unit = "qw"
+radix = 16
+[[check]]
+file = "games/Cursed Castilla/mem_wc_load.sh"
+pattern = "^_mwc_base=(0x[0-9A-Fa-f]+)"
+expect = "mem_wc.base"
+[[check]]
+file = "games/Cursed Castilla/mem_wc_load.sh"
+pattern = "^_mwc_size=(0x[0-9A-Fa-f]+)"
+expect = "mem_wc.size"

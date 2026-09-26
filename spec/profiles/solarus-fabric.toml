@@ -1,0 +1,104 @@
+# solarus-fabric — the solarus-mister core. Its own blitter fork and layout.
+#
+# Differences from gm-fabric that bite:
+#  * 0x3BF40000 is TL_BUF (tile-list entries), NOT the FB/joystick block.
+#  * Two banked control blocks (0x3B000000, 0x3B080000); heap at 0x3B100000.
+#  * 18 MiB window (to 0x3C200000). A 16 MiB mem_wc allowlist silently misses
+#    GRID_BUF and drops the engine to the strongly-ordered path.
+#  * FB/joystick/vsync stay in the OpenBOR 0x3A000000 block (4 players).
+# Sources: solarus fpga/rtl/blitter_defs.vh, fpga/rtl/openbor_video_reader.sv,
+#          patches/mister/mister_blitter_renderer.cpp (BLT_DDR_*, OFF_*),
+#          patches/mister/native_{video,audio}_writer.*, mem_wc/README.md.
+name        = "solarus-fabric"
+description = "Solarus core: 18 MiB banked blitter window at 0x3B000000, OpenBOR block at 0x3A000000"
+cores       = ["Solarus"]
+fb_default  = [320, 240]
+
+[regions.legacy]
+base = 0x3A000000
+size = 0x00100000
+
+[regions.legacy.fields]
+VCTRL      = 0x00000
+JOY_P1     = 0x00008
+CART_CTRL  = 0x00010
+JOY_P2     = 0x00018
+JOY_P3     = 0x00020
+JOY_P4     = 0x00028
+AUDIO_WR   = 0x00030
+AUDIO_RD   = 0x00038
+BUF0       = 0x00040
+BUF1       = 0x40040
+VSYNC      = 0x70000
+CART_DATA  = 0x80000
+AUDIO_RING = 0xD0000
+
+[regions.legacy.sizes]
+BUF0       = 0x40000
+BUF1       = 0x2FFC0
+AUDIO_RING = 0x10000
+
+[regions.fabric]
+base = 0x3B000000
+size = 0x01200000
+
+[regions.fabric.fields]
+CTRL0   = 0x0000000
+RING0   = 0x0000040
+CTRL1   = 0x0080000
+RING1   = 0x0080040
+HEAP    = 0x0100000
+BGCACHE = 0x0F00000
+TLBUF   = 0x0F40000
+CFTBUF  = 0x0FC2000
+CLUTBUF = 0x0FC3000
+SPBUF   = 0x0FD3000
+GRIDBUF = 0x0FF3000
+FRTBUF  = 0x11F3000
+
+[regions.fabric.sizes]
+CTRL0   = 0x0000040
+RING0   = 0x007FFC0
+CTRL1   = 0x0000040
+RING1   = 0x007FFC0
+HEAP    = 0x0E00000
+BGCACHE = 0x0025800
+TLBUF   = 0x0080000
+CLUTBUF = 0x0010000
+SPBUF   = 0x0020000
+GRIDBUF = 0x0200000
+FRTBUF  = 0x0004000
+
+[ctrl]
+C_SUBMIT   = 0
+C_CMDCOUNT = 1
+C_TARGET   = 2
+C_CLEAR    = 3
+C_FLAGS    = 4
+C_DONE     = 5
+C_STATUS   = 6
+C_SRCSEL   = 7
+
+[mem_wc]
+base = 0x3B000000
+size = 0x01200000
+wc_ranges = [ [0x3B001000, 0x3B080000], [0x3B081000, 0x3C200000] ]
+
+[audio]
+rate     = 48000
+channels = 2
+format   = "S16LE"
+
+[roles]
+video_ctrl      = "legacy.VCTRL"
+fb_buf0         = "legacy.BUF0"
+fb_buf1         = "legacy.BUF1"
+joy_p1          = "legacy.JOY_P1"
+joy_p2          = "legacy.JOY_P2"
+joy_p3          = "legacy.JOY_P3"
+joy_p4          = "legacy.JOY_P4"
+audio_wr        = "legacy.AUDIO_WR"
+audio_rd        = "legacy.AUDIO_RD"
+audio_ring      = "legacy.AUDIO_RING"
+scanout_counter = "legacy.VSYNC"
+fabric_ctrl     = "fabric.CTRL0"

@@ -1,0 +1,77 @@
+# gm-fabric constants hand-typed in gmloader-next.
+profile = "gm-fabric"
+[[check]]
+file = "gmloader/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_PHYS_BASE\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric"
+[[check]]
+file = "gmloader/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_MAP_SIZE\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric"
+unit = "size"
+[[check]]
+file = "gmloader/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_RING_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.RING_A"
+unit = "off"
+[[check]]
+file = "gmloader/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_RING_B_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.RING_B"
+unit = "off"
+[[check]]
+file = "gmloader/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_SRC_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.SRC"
+unit = "off"
+[[check]]
+file = "gmloader/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_TLBUF_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.TLBUF"
+unit = "off"
+[[check]]
+file = "gmloader/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_SCANFRM_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+value = 0x00FB0018   # fb.SCANFRM relative to the fabric window
+[[check]]
+file = "gmloader/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_WC_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+value = 0x00001000   # mem_wc.wc_ranges[0] lo - fabric base
+[[check]]
+file = "gmloader/mister/joy_ddr_reader.cpp"
+pattern = "#define JOYDDR_PHYS_BASE\\s+(0x[0-9A-Fa-f]+)u"
+expect = "fb"
+[[check]]
+file = "gmloader/mister/joy_ddr_reader.cpp"
+pattern = "#define JOYDDR_P1_OFFSET\\s+(0x[0-9A-Fa-f]+)u"
+expect = "fb.JOY_P1"
+unit = "off"
+[[check]]
+file = "gmloader/mister/joy_ddr_reader.cpp"
+pattern = "#define JOYDDR_P2_OFFSET\\s+(0x[0-9A-Fa-f]+)u"
+expect = "fb.JOY_P2"
+unit = "off"
+[[check]]
+file = "gmloader/mister/native_audio_writer.c"
+pattern = "#define NA_DDR_PHYS_BASE\\s+(0x[0-9A-Fa-f]+)u"
+expect = "legacy"
+[[check]]
+file = "gmloader/mister/native_audio_writer.c"
+pattern = "#define NA_WR_PTR_OFFSET\\s+(0x[0-9A-Fa-f]+)u"
+expect = "legacy.AUDIO_WR"
+unit = "off"
+[[check]]
+file = "gmloader/mister/native_audio_writer.c"
+pattern = "#define NA_RD_PTR_OFFSET\\s+(0x[0-9A-Fa-f]+)u"
+expect = "legacy.AUDIO_RD"
+unit = "off"
+[[check]]
+file = "gmloader/mister/native_audio_writer.c"
+pattern = "#define NA_RING_OFFSET\\s+(0x[0-9A-Fa-f]+)u"
+expect = "legacy.AUDIO_RING"
+unit = "off"
+[[check]]
+file = "gmloader/mister/native_audio_writer.c"
+pattern = "#define NA_RING_BYTES\\s+(0x[0-9A-Fa-f]+)u"
+expect = "legacy.AUDIO_RING"
+unit = "size"

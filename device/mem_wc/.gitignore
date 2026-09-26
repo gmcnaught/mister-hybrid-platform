@@ -1,0 +1,6 @@
+.kbuild/
+*.o
+*.mod*
+.*.cmd
+Module.symvers
+modules.order

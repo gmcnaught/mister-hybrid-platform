@@ -1,0 +1,457 @@
+{
+ "gm-fabric": {
+  "audio": {
+   "channels": 2,
+   "format": "S16LE",
+   "rate": 48000
+  },
+  "cores": [
+   "MalditaCastilla",
+   "CursedCastilla",
+   "DonutDodo",
+   "CashCowDX"
+  ],
+  "ctrl": {
+   "C_CLEAR": 3,
+   "C_CMDCOUNT": 1,
+   "C_DONE": 5,
+   "C_FLAGS": 4,
+   "C_SRCSEL": 7,
+   "C_STATUS": 6,
+   "C_SUBMIT": 0,
+   "C_TARGET": 2
+  },
+  "description": "Maldita-family blitter core: 16 MiB fabric window at 0x3B000000, FB/joy block relocated to 0x3BF40000",
+  "fb_default": [
+   288,
+   216
+  ],
+  "mem_wc": {
+   "base": 989855744,
+   "size": 16777216,
+   "wc_ranges": [
+    [
+     989859840,
+     1005846528
+    ]
+   ]
+  },
+  "regions": {
+   "fabric": {
+    "base": 989855744,
+    "fields": {
+     "BLTCTRL": {
+      "off": 0,
+      "phys": 989855744,
+      "size": 64
+     },
+     "RING_A": {
+      "off": 64,
+      "phys": 989855808,
+      "size": 262080
+     },
+     "RING_B": {
+      "off": 262144,
+      "phys": 990117888,
+      "size": 262144
+     },
+     "SRC": {
+      "off": 524288,
+      "phys": 990380032,
+      "size": 15466496
+     },
+     "TLBUF": {
+      "off": 15990784,
+      "phys": 1005846528,
+      "size": 0
+     }
+    },
+    "size": 16777216
+   },
+   "fb": {
+    "base": 1005846528,
+    "fields": {
+     "BUF0": {
+      "off": 64,
+      "phys": 1005846592,
+      "size": 262144
+     },
+     "BUF1": {
+      "off": 262208,
+      "phys": 1006108736,
+      "size": 196544
+     },
+     "CTRL": {
+      "off": 0,
+      "phys": 1005846528,
+      "size": 0
+     },
+     "DIAG": {
+      "off": 720896,
+      "phys": 1006567424,
+      "size": 0
+     },
+     "JOY_P1": {
+      "off": 8,
+      "phys": 1005846536,
+      "size": 0
+     },
+     "JOY_P2": {
+      "off": 24,
+      "phys": 1005846552,
+      "size": 0
+     },
+     "SCANFRM": {
+      "off": 458776,
+      "phys": 1006305304,
+      "size": 0
+     },
+     "VSYNC": {
+      "off": 458752,
+      "phys": 1006305280,
+      "size": 0
+     }
+    },
+    "size": 786432
+   },
+   "legacy": {
+    "base": 973078528,
+    "fields": {
+     "AUDIO_RD": {
+      "off": 56,
+      "phys": 973078584,
+      "size": 0
+     },
+     "AUDIO_RING": {
+      "off": 851968,
+      "phys": 973930496,
+      "size": 65536
+     },
+     "AUDIO_WR": {
+      "off": 48,
+      "phys": 973078576,
+      "size": 0
+     },
+     "JOY_INJECT": {
+      "off": 786432,
+      "phys": 973864960,
+      "size": 0
+     },
+     "VCTRL": {
+      "off": 0,
+      "phys": 973078528,
+      "size": 0
+     }
+    },
+    "size": 1048576
+   }
+  },
+  "roles": {
+   "audio_rd": 973078584,
+   "audio_ring": 973930496,
+   "audio_wr": 973078576,
+   "fabric_ctrl": 989855744,
+   "fb_buf0": 1005846592,
+   "fb_buf1": 1006108736,
+   "joy_p1": 1005846536,
+   "joy_p2": 1005846552,
+   "scanout_counter": 1006305304,
+   "video_ctrl": 1005846528
+  }
+ },
+ "openbor-classic": {
+  "audio": {
+   "channels": 2,
+   "format": "S16LE",
+   "rate": 48000
+  },
+  "cores": [
+   "OpenBOR"
+  ],
+  "ctrl": {},
+  "description": "OpenBOR_7533 layout: software RGB565 double buffer + audio ring at 0x3A000000",
+  "fb_default": [
+   320,
+   240
+  ],
+  "mem_wc": null,
+  "regions": {
+   "legacy": {
+    "base": 973078528,
+    "fields": {
+     "AUDIO_RD": {
+      "off": 56,
+      "phys": 973078584,
+      "size": 0
+     },
+     "AUDIO_RING": {
+      "off": 851968,
+      "phys": 973930496,
+      "size": 65536
+     },
+     "AUDIO_WR": {
+      "off": 48,
+      "phys": 973078576,
+      "size": 0
+     },
+     "BUF0": {
+      "off": 64,
+      "phys": 973078592,
+      "size": 262144
+     },
+     "BUF1": {
+      "off": 262208,
+      "phys": 973340736,
+      "size": 196544
+     },
+     "CART_CTRL": {
+      "off": 16,
+      "phys": 973078544,
+      "size": 0
+     },
+     "CART_DATA": {
+      "off": 524288,
+      "phys": 973602816,
+      "size": 0
+     },
+     "JOY_P1": {
+      "off": 8,
+      "phys": 973078536,
+      "size": 0
+     },
+     "JOY_P2": {
+      "off": 24,
+      "phys": 973078552,
+      "size": 0
+     },
+     "JOY_P3": {
+      "off": 32,
+      "phys": 973078560,
+      "size": 0
+     },
+     "JOY_P4": {
+      "off": 40,
+      "phys": 973078568,
+      "size": 0
+     },
+     "VCTRL": {
+      "off": 0,
+      "phys": 973078528,
+      "size": 0
+     },
+     "VSYNC": {
+      "off": 458752,
+      "phys": 973537280,
+      "size": 0
+     }
+    },
+    "size": 1048576
+   }
+  },
+  "roles": {
+   "audio_rd": 973078584,
+   "audio_ring": 973930496,
+   "audio_wr": 973078576,
+   "fb_buf0": 973078592,
+   "fb_buf1": 973340736,
+   "joy_p1": 973078536,
+   "joy_p2": 973078552,
+   "joy_p3": 973078560,
+   "joy_p4": 973078568,
+   "scanout_counter": 973537280,
+   "video_ctrl": 973078528
+  }
+ },
+ "solarus-fabric": {
+  "audio": {
+   "channels": 2,
+   "format": "S16LE",
+   "rate": 48000
+  },
+  "cores": [
+   "Solarus"
+  ],
+  "ctrl": {
+   "C_CLEAR": 3,
+   "C_CMDCOUNT": 1,
+   "C_DONE": 5,
+   "C_FLAGS": 4,
+   "C_SRCSEL": 7,
+   "C_STATUS": 6,
+   "C_SUBMIT": 0,
+   "C_TARGET": 2
+  },
+  "description": "Solarus core: 18 MiB banked blitter window at 0x3B000000, OpenBOR block at 0x3A000000",
+  "fb_default": [
+   320,
+   240
+  ],
+  "mem_wc": {
+   "base": 989855744,
+   "size": 18874368,
+   "wc_ranges": [
+    [
+     989859840,
+     990380032
+    ],
+    [
+     990384128,
+     1008730112
+    ]
+   ]
+  },
+  "regions": {
+   "fabric": {
+    "base": 989855744,
+    "fields": {
+     "BGCACHE": {
+      "off": 15728640,
+      "phys": 1005584384,
+      "size": 153600
+     },
+     "CFTBUF": {
+      "off": 16523264,
+      "phys": 1006379008,
+      "size": 0
+     },
+     "CLUTBUF": {
+      "off": 16527360,
+      "phys": 1006383104,
+      "size": 65536
+     },
+     "CTRL0": {
+      "off": 0,
+      "phys": 989855744,
+      "size": 64
+     },
+     "CTRL1": {
+      "off": 524288,
+      "phys": 990380032,
+      "size": 64
+     },
+     "FRTBUF": {
+      "off": 18821120,
+      "phys": 1008676864,
+      "size": 16384
+     },
+     "GRIDBUF": {
+      "off": 16723968,
+      "phys": 1006579712,
+      "size": 2097152
+     },
+     "HEAP": {
+      "off": 1048576,
+      "phys": 990904320,
+      "size": 14680064
+     },
+     "RING0": {
+      "off": 64,
+      "phys": 989855808,
+      "size": 524224
+     },
+     "RING1": {
+      "off": 524352,
+      "phys": 990380096,
+      "size": 524224
+     },
+     "SPBUF": {
+      "off": 16592896,
+      "phys": 1006448640,
+      "size": 131072
+     },
+     "TLBUF": {
+      "off": 15990784,
+      "phys": 1005846528,
+      "size": 524288
+     }
+    },
+    "size": 18874368
+   },
+   "legacy": {
+    "base": 973078528,
+    "fields": {
+     "AUDIO_RD": {
+      "off": 56,
+      "phys": 973078584,
+      "size": 0
+     },
+     "AUDIO_RING": {
+      "off": 851968,
+      "phys": 973930496,
+      "size": 65536
+     },
+     "AUDIO_WR": {
+      "off": 48,
+      "phys": 973078576,
+      "size": 0
+     },
+     "BUF0": {
+      "off": 64,
+      "phys": 973078592,
+      "size": 262144
+     },
+     "BUF1": {
+      "off": 262208,
+      "phys": 973340736,
+      "size": 196544
+     },
+     "CART_CTRL": {
+      "off": 16,
+      "phys": 973078544,
+      "size": 0
+     },
+     "CART_DATA": {
+      "off": 524288,
+      "phys": 973602816,
+      "size": 0
+     },
+     "JOY_P1": {
+      "off": 8,
+      "phys": 973078536,
+      "size": 0
+     },
+     "JOY_P2": {
+      "off": 24,
+      "phys": 973078552,
+      "size": 0
+     },
+     "JOY_P3": {
+      "off": 32,
+      "phys": 973078560,
+      "size": 0
+     },
+     "JOY_P4": {
+      "off": 40,
+      "phys": 973078568,
+      "size": 0
+     },
+     "VCTRL": {
+      "off": 0,
+      "phys": 973078528,
+      "size": 0
+     },
+     "VSYNC": {
+      "off": 458752,
+      "phys": 973537280,
+      "size": 0
+     }
+    },
+    "size": 1048576
+   }
+  },
+  "roles": {
+   "audio_rd": 973078584,
+   "audio_ring": 973930496,
+   "audio_wr": 973078576,
+   "fabric_ctrl": 989855744,
+   "fb_buf0": 973078592,
+   "fb_buf1": 973340736,
+   "joy_p1": 973078536,
+   "joy_p2": 973078552,
+   "joy_p3": 973078560,
+   "joy_p4": 973078568,
+   "scanout_counter": 973537280,
+   "video_ctrl": 973078528
+  }
+ }
+}

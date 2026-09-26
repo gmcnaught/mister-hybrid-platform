@@ -1,0 +1,69 @@
+# mister-armhf-base: shared cross-build base for every MiSTer hybrid port.
+#
+# Target: MiSTer DE10-Nano ARM Cortex-A9, armhf, glibc 2.31 (Debian bullseye ==
+# MiSTer's glibc), GCC 10. Build host-native (arm64 on Apple Silicon, amd64 in
+# CI): arm-linux-gnueabihf is only ever a cross TARGET, so no QEMU/Rosetta.
+#
+# Engine images layer on this and add only their own :armhf -dev packages:
+#   FROM ghcr.io/gmcnaught/mister-armhf-base:bullseye
+#   RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
+#         libsdl2-dev:armhf ... && rm -rf /var/lib/apt/lists/*
+#
+# Build:  docker build -f build/docker/Dockerfile.base -t mister-armhf-base:bullseye .
+#
+# Replaces the three per-port bullseye-EOL workarounds (solarus snapshot pin,
+# gmloader-next apt_use_snapshot.sh, cash.cow sources.list sed) and donut's
+# undocumented FROM gmloader-armhf-build.
+FROM debian:bullseye-slim
+
+# Bullseye left Debian LTS on 2026-08-31; its security pool on deb.debian.org is
+# pruned while the index still lists the pruned files (apt 404s), and
+# archive.debian.org has no bullseye-security. Resolve everything from one fixed
+# snapshot.debian.org timestamp -- the last LTS day, security suite included.
+# Check-Valid-Until off: snapshot Release files are past Valid-Until by design.
+# snapshot.debian.org intermittently 503s under load, hence Retries/Timeout.
+# (Carried from solarus-mister Dockerfile.solarus-build.)
+ARG DEBIAN_SNAPSHOT=20260831T000000Z
+RUN printf '%s\n' \
+      "deb http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bullseye main" \
+      "deb http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bullseye-updates main" \
+      "deb http://snapshot.debian.org/archive/debian-security/${DEBIAN_SNAPSHOT} bullseye-security main" \
+      > /etc/apt/sources.list \
+ && rm -f /etc/apt/sources.list.d/* \
+ && printf '%s\n' 'Acquire::Check-Valid-Until "false";' \
+      'Acquire::Retries "10";' 'Acquire::http::Timeout "120";' \
+      > /etc/apt/apt.conf.d/99snapshot
+
+# armhf multiarch must be enabled before :armhf dev packages resolve in child images.
+RUN dpkg --add-architecture armhf \
+ && apt-get update -qq \
+ && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+      build-essential cmake make git pkg-config ca-certificates python3 curl \
+      xz-utils file patch \
+      binutils-arm-linux-gnueabihf gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+      libstdc++-10-dev-armhf-cross linux-libc-dev-armhf-cross \
+ && rm -rf /var/lib/apt/lists/*
+
+# SCons 4.5.2 (Godot 3/FRT and Godot 4) from the PyPI wheel, hash-pinned, no pip.
+RUN mkdir -p /opt/scons && cd /opt/scons \
+ && curl -sSLo scons.whl https://files.pythonhosted.org/packages/a1/a9/a160614f5630192e51bc6e35127d5b39ea6c457f07bc5e34063776370d0e/SCons-4.5.2-py3-none-any.whl \
+ && echo "2f66a1c5c485068a496c12356583eefb2d79e17177278c7334b12b460f0503ce  scons.whl" | sha256sum -c - \
+ && python3 -m zipfile -e scons.whl . && rm scons.whl \
+ && printf '#!/bin/sh\nPYTHONPATH=/opt/scons exec python3 -c "import SCons.Script; SCons.Script.main()" "$@"\n' > /usr/local/bin/scons \
+ && chmod +x /usr/local/bin/scons
+
+# Unprefixed cross binutils + GCC LTO wrappers (Godot 4 production=yes hardcodes
+# AR=gcc-ar). NOT on PATH by default -- that would shadow the host tools that
+# host-side builds (LuaJIT's buildvm, host tests) need. Opt in per build:
+#   PATH=/opt/cross/bin:$PATH scons ...
+RUN mkdir -p /opt/cross/bin \
+ && for t in ar ranlib nm strip objcopy gcc-ar gcc-ranlib gcc-nm; do \
+      ln -s /usr/bin/arm-linux-gnueabihf-$t /opt/cross/bin/$t; done
+
+# Toolchain files, so child images and `docker run` builds need no repo checkout.
+COPY build/cmake/arm-linux-gnueabihf.toolchain.cmake /opt/mister/cmake/
+COPY build/make/mister-flags.mk /opt/mister/make/
+COPY build/scripts/collect_runtime_libs.sh /opt/mister/bin/
+ENV MISTER_TOOLCHAIN_FILE=/opt/mister/cmake/arm-linux-gnueabihf.toolchain.cmake
+
+WORKDIR /src

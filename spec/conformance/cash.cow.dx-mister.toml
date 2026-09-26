@@ -1,0 +1,59 @@
+# gm-fabric constants hand-typed in cash.cow.dx-mister.
+profile = "gm-fabric"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_PHYS_BASE\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_MAP_SIZE\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric"
+unit = "size"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_RING_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.RING_A"
+unit = "off"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_RING_B_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.RING_B"
+unit = "off"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_SRC_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.SRC"
+unit = "off"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_TLBUF_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.TLBUF"
+unit = "off"
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_SCANFRM_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+value = 0x00FB0018   # fb.SCANFRM relative to the fabric window
+[[check]]
+file = "src/vendor/mister/raster_backend_mfgpu.cpp"
+pattern = "MF_DEV_WC_OFF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+value = 0x00001000   # mem_wc.wc_ranges[0] lo - fabric base
+[[check]]
+file = "src/godot/platform/linuxbsd/mister/audio_driver_mister.cpp"
+pattern = "MA_DDR_PHYS_BASE\\s*=\\s*(0x[0-9A-Fa-f]+)"
+expect = "legacy"
+[[check]]
+file = "src/godot/platform/linuxbsd/mister/joypad_mister.cpp"
+pattern = "JOY_BASE_DEFAULT\\s*=\\s*(0x[0-9A-Fa-f]+)"
+expect = "fb"
+[[check]]
+file = "dist/games/CashCowDX/launch.sh"
+pattern = "^FABRIC_CTRL=(0x[0-9A-Fa-f]+)"
+expect = "fabric.BLTCTRL"
+[[check]]
+file = "dist/games/CashCowDX/launch.sh"
+pattern = "^FABRIC_DONE=(0x[0-9A-Fa-f]+)"
+value = 0x3B000028   # fabric.BLTCTRL + 8 * ctrl.C_DONE
+[[check]]
+file = "dist/games/CashCowDX/launch.sh"
+pattern = "phys_size=(0x[0-9A-Fa-f]+)"
+expect = "mem_wc.size"

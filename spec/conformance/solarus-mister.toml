@@ -1,0 +1,120 @@
+# solarus-fabric constants hand-typed in solarus-mister. (Its own
+# scripts/tests/test_wire_constants.py still owns the blitter opcode ABI.)
+profile = "solarus-fabric"
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+BLTCTRL_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.CTRL0"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+RING_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.RING0"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+SRC_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.HEAP"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+CACHE_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.BGCACHE"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+TL_BUF_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.TLBUF"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+CFT_BUF_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.CFTBUF"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+CLUT_BUF_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.CLUTBUF"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+SP_BUF_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.SPBUF"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+GRID_BUF_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.GRIDBUF"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/blitter_defs.vh"
+pattern = "`define\\s+FRT_BUF_QW\\s+29'h([0-9A-Fa-f]+)"
+expect = "fabric.FRTBUF"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "JOY0_ADDR\\s*=\\s*29'h([0-9A-Fa-f]+)"
+expect = "legacy.JOY_P1"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "BUF1_ADDR\\s*=\\s*29'h([0-9A-Fa-f]+)"
+expect = "legacy.BUF1"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "AUDIO_RING_ADDR\\s*=\\s*29'h([0-9A-Fa-f]+)"
+expect = "legacy.AUDIO_RING"
+unit = "qw"
+radix = 16
+[[check]]
+file = "fpga/rtl/openbor_video_reader.sv"
+pattern = "VSYNC_ADDR\\s*=\\s*29'h([0-9A-Fa-f]+)"
+expect = "legacy.VSYNC"
+unit = "qw"
+radix = 16
+[[check]]
+file = "patches/mister/mister_blitter_renderer.cpp"
+pattern = "BLT_DDR_PHYS = (0x[0-9A-Fa-f]+)u"
+expect = "fabric"
+[[check]]
+file = "patches/mister/mister_blitter_renderer.cpp"
+pattern = "BLT_DDR_SIZE = (0x[0-9A-Fa-f]+)u"
+expect = "fabric"
+unit = "size"
+[[check]]
+file = "patches/mister/mister_blitter_renderer.cpp"
+pattern = "OFF_CTRL1\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.CTRL1"
+unit = "off"
+[[check]]
+file = "patches/mister/mister_blitter_renderer.cpp"
+pattern = "OFF_HEAP\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.HEAP"
+unit = "off"
+[[check]]
+file = "patches/mister/mister_blitter_renderer.cpp"
+pattern = "OFF_GRIDBUF\\s*=\\s*(0x[0-9A-Fa-f]+)u"
+expect = "fabric.GRIDBUF"
+unit = "off"
+[[check]]
+file = "patches/mister/native_audio_writer.c"
+pattern = "#define NA_RING_OFFSET\\s+(0x[0-9A-Fa-f]+)u?"
+expect = "legacy.AUDIO_RING"
+unit = "off"
+[[check]]
+file = "games/Solarus/solarus_run.sh"
+pattern = "^WC_SIZE=(0x[0-9A-Fa-f]+)"
+expect = "mem_wc.size"

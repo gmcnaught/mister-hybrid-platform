@@ -1,0 +1,51 @@
+# openbor-classic — the MiSTer_OpenBOR_7533 / MiSTer_PICO-8 shared-DDR layout.
+# One 1 MiB block at 0x3A000000: control word, joysticks, audio pointers, two
+# RGB565 frame buffers, vsync counter, audio ring. No blitter.
+# Source: MiSTer_OpenBOR_7533 src/native_video_writer.c, native_audio_writer.h,
+#         fpga/rtl/openbor_video_reader.sv.
+name        = "openbor-classic"
+description = "OpenBOR_7533 layout: software RGB565 double buffer + audio ring at 0x3A000000"
+cores       = ["OpenBOR"]
+fb_default  = [320, 240]
+
+[regions.legacy]
+base = 0x3A000000
+size = 0x00100000
+
+[regions.legacy.fields]
+VCTRL      = 0x00000   # frame_counter[31:2] | active_buf[1:0], ARM-written after pixels
+JOY_P1     = 0x00008   # FPGA-written hps_io joystick_0
+CART_CTRL  = 0x00010
+JOY_P2     = 0x00018
+JOY_P3     = 0x00020
+JOY_P4     = 0x00028
+AUDIO_WR   = 0x00030   # ARM-written ring write pointer (bytes)
+AUDIO_RD   = 0x00038   # FPGA-written ring read pointer (bytes)
+BUF0       = 0x00040
+BUF1       = 0x40040
+VSYNC      = 0x70000   # FPGA-written, +1 per displayed frame
+CART_DATA  = 0x80000
+AUDIO_RING = 0xD0000
+
+[regions.legacy.sizes]
+BUF0       = 0x40000
+BUF1       = 0x2FFC0   # up to VSYNC
+AUDIO_RING = 0x10000   # 64 KiB, 48 kHz S16 stereo
+
+[audio]
+rate     = 48000
+channels = 2
+format   = "S16LE"
+
+[roles]
+video_ctrl      = "legacy.VCTRL"
+fb_buf0         = "legacy.BUF0"
+fb_buf1         = "legacy.BUF1"
+joy_p1          = "legacy.JOY_P1"
+joy_p2          = "legacy.JOY_P2"
+joy_p3          = "legacy.JOY_P3"
+joy_p4          = "legacy.JOY_P4"
+audio_wr        = "legacy.AUDIO_WR"
+audio_rd        = "legacy.AUDIO_RD"
+audio_ring      = "legacy.AUDIO_RING"
+scanout_counter = "legacy.VSYNC"
