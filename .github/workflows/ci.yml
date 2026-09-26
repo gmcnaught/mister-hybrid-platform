@@ -33,17 +33,13 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: build (push on main / tags)
+      - name: build and load
         uses: docker/build-push-action@v6
         with:
           context: .
           file: build/docker/Dockerfile.base
           load: true
-          push: ${{ github.event_name == 'push' }}
-          tags: |
-            mister-armhf-base:bullseye
-            ghcr.io/${{ github.repository_owner }}/mister-armhf-base:bullseye
-            ghcr.io/${{ github.repository_owner }}/mister-armhf-base:${{ github.sha }}
+          tags: mister-armhf-base:bullseye
       - name: cross-compile smoke test
         run: |
           docker run --rm -v "$PWD:/src" -w /src mister-armhf-base:bullseye sh -ec '
@@ -56,3 +52,10 @@ jobs:
         with:
           name: MiSTer_hybrid
           path: build/main-hook/MiSTer_hybrid
+      - name: push to GHCR (main / tags)
+        if: github.event_name == 'push'
+        run: |
+          for t in bullseye ${{ github.sha }}; do
+            docker tag mister-armhf-base:bullseye ghcr.io/${{ github.repository_owner }}/mister-armhf-base:$t
+            docker push -q ghcr.io/${{ github.repository_owner }}/mister-armhf-base:$t
+          done
