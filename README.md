@@ -22,7 +22,9 @@ Design, inventory and migration order: [`docs/design.md`](docs/design.md).
 | `build/docker/Dockerfile.base` | ✅ | `mister-armhf-base:bullseye`: snapshot-pinned bullseye, GCC 10 armhf, glibc 2.31, SCons |
 | `build/cmake`, `build/make` | ✅ | Cross toolchain file and make fragment with one set of Cortex-A9 flags |
 | `build/scripts/collect_runtime_libs.sh` | ✅ | Collects the DT_NEEDED closure and enforces GLIBC ≤ 2.31 |
-| `device/sh/launch_lib.sh`, `main-hook/`, templates, `mister-port.toml` | ⏳ step 2 | The launcher kit and the shared `MiSTer_hybrid` `main=` binary |
+| `device/sh/launch_lib.sh` | ✅ | The launcher, extracted from cash.cow / donut / maldita / solarus. It runs these steps in order: core and profile check, lock, stop other fabric engines (via a claim file plus the legacy process names), wait for the FPGA, mem_wc, CPU isolation, fabric gate with core reload, watchdog |
+| `device/main-hook/` | ✅ | **One** `MiSTer_hybrid` `main=` binary for every port. It looks up `/media/fat/linux/hybrid.d/<CORENAME>.conf` and starts that port's launcher. Built against upstream Main_MiSTer `3380931`. The OSD-Reset restart that maldita has is not ported yet |
+| `device/templates/` + `tools/mister_platform.py` | ✅ | `mister-platform render mister-port.toml` writes a port's `launch.sh`, `platform/`, `hybrid.d` entry, Scripts entry, CoresMenu toggle and MGL. See `examples/cash.cow.dx/` |
 | `lib/` (libmister) | ⏳ step 3 | DDR map/WC helper, video/audio/joystick, pacing, CPU isolation |
 | `fabric/` | ⏳ step 4 | One `raster_backend_mfgpu` plus the `libmisterfabric` ABI |
 | reusable CI workflows | ⏳ step 5 | |
@@ -51,6 +53,19 @@ git submodule add git@github.com:gmcnaught/mister-hybrid-platform.git external/m
 - **Until constants move to the generated headers:** keep a conformance file and run it in CI:
   `python3 external/mister-hybrid-platform/spec/conform.py spec/conformance/<port>.toml --root .`
 
+## A port's device files
+
+Each port keeps one `mister-port.toml` (example: [`examples/cash.cow.dx/mister-port.toml`](examples/cash.cow.dx/mister-port.toml)):
+
+```sh
+python3 external/mister-hybrid-platform/tools/mister_platform.py render mister-port.toml \
+    --out release/sd --hook-binary MiSTer_hybrid     # tree mirrors /media/fat
+```
+
+`MiSTer_hybrid` comes from the platform CI artifact, or from `device/main-hook/build-hps.sh`.
+Every port ships the same binary. The registry format ignores unknown keys, so installing
+a newer port over an older one is safe.
+
 ## Adding a new core or engine
 
 - **New FPGA core layout:** add `spec/profiles/<name>.toml`, list its CORENAMEs, run
@@ -60,6 +75,6 @@ git submodule add git@github.com:gmcnaught/mister-hybrid-platform.git external/m
 
 ## Tests
 
-`tests/run_all.sh` needs Python ≥ 3.11, dash and shellcheck. CI (`.github/workflows/ci.yml`)
+`tests/run_all.sh` needs Python ≥ 3.11, dash, bash ≥ 4 (set `BASH4=` on macOS), a C compiler and shellcheck; iverilog is optional. CI (`.github/workflows/ci.yml`)
 also compiles the generated headers as C11 and C++17 and builds the base image. It
 publishes the image to GHCR on `main` and on tags.

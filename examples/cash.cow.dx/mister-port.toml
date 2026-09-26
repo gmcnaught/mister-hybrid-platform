@@ -1,0 +1,18 @@
+# Cash Cow DX expressed as a platform manifest (mirrors
+# cash.cow.dx-mister/dist/games/CashCowDX/launch.sh at 2026-09-26).
+[port]
+name     = "CashCowDX"
+title    = "Cash Cow DX"
+profile  = "gm-fabric"
+engine   = "godot4"
+
+[launch]
+process       = "cashcowdx"
+command       = ["./cashcowdx", "--display-driver", "mister", "--rendering-driver", "opengl3_es",
+                 "--audio-driver", "MiSTer", "--max-fps", "${CASHCOW_MAX_FPS:-0}",
+                 "--main-pack", "CashCowDX.pck"]
+ready_pattern = "fabric bring-up"
+env = { MISTER_FABRIC = "1", MISTER_FABRIC_LIB = "$MH_GAMEDIR/libmisterfabric.so", GMLOADER_RASTER = "mfgpu", MISTER_JOY = "1", MISTER_JOY_BASE = "${CASHCOW_JOY_BASE:-$MISTER_GM_FABRIC_FB_BASE}", MISTER_PATCHES_DIR = "$MH_GAMEDIR/patches", MISTER_PIN_MAIN = "0", MISTER_PIN_AUDIO = "1", GODOT_SILENCE_ROOT_WARNING = "1", XDG_DATA_HOME = "$MH_GAMEDIR/data", XDG_CONFIG_HOME = "$MH_GAMEDIR/data" }
+
+[scripts]
+required_files = [ ["CashCowDX.pck", "copy it from your GOG install (see README.md)"] ]

@@ -6,35 +6,23 @@ on:
   pull_request:
 
 jobs:
-  spec:
+  host-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with: { python-version: '3.12' }
-      - name: generated output is current
-        run: python3 spec/gen.py --check
-      - name: spec / generator / conformance tests
-        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
-      - name: generated headers compile (C11 + C++17)
+      - run: sudo apt-get install -y -qq dash shellcheck iverilog
+      - name: spec, generator, conformance, manifest, loader, launcher, renderer, registry, SV
+        run: sh tests/run_all.sh
+      - name: generated headers compile as C11 and C++17
         run: |
           cc  -std=c11   -Wall -Wextra -Werror -Ispec/generated tests/smoke_profiles.c -o t && ./t
           c++ -std=c++17 -Wall -Wextra -Werror -Ispec/generated -x c++ tests/smoke_profiles.c -o t && ./t
 
-  shell:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: sudo apt-get install -y -qq dash shellcheck iverilog
-      - run: dash tests/test_mem_wc_load.sh
-      - run: sh tests/test_build_flags.sh
-      - run: sh tests/test_sv_headers.sh
-      - run: shellcheck -s sh device/sh/*.sh tests/*.sh
-      - run: shellcheck build/scripts/*.sh device/mem_wc/build.sh
-
   docker-base:
     runs-on: ubuntu-latest
-    needs: [spec, shell]
+    needs: host-tests
     permissions: { contents: read, packages: write }
     steps:
       - uses: actions/checkout@v4
@@ -50,14 +38,21 @@ jobs:
         with:
           context: .
           file: build/docker/Dockerfile.base
+          load: true
           push: ${{ github.event_name == 'push' }}
           tags: |
+            mister-armhf-base:bullseye
             ghcr.io/${{ github.repository_owner }}/mister-armhf-base:bullseye
             ghcr.io/${{ github.repository_owner }}/mister-armhf-base:${{ github.sha }}
-      - name: smoke-test the cross compiler
-        if: github.event_name == 'push'
+      - name: cross-compile smoke test
         run: |
-          docker run --rm -v "$PWD:/src" ghcr.io/${{ github.repository_owner }}/mister-armhf-base:${{ github.sha }} sh -ec '
+          docker run --rm -v "$PWD:/src" -w /src mister-armhf-base:bullseye sh -ec '
             arm-linux-gnueabihf-gcc -std=c11 -Wall -Werror -mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard \
               -Ispec/generated tests/smoke_profiles.c -o /tmp/t
             file /tmp/t | grep -q "ARM, EABI5" && echo armhf-ok'
+      - name: build MiSTer_hybrid against upstream Main_MiSTer
+        run: device/main-hook/build-hps.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MiSTer_hybrid
+          path: build/main-hook/MiSTer_hybrid
