@@ -4,7 +4,11 @@
 #include "mister_profiles.h"
 #include <stdio.h>
 
+#ifdef __cplusplus
+static_assert(MISTER_MAP_ROLE_SCANOUT_COUNTER == 0x3BFB0018u, "gm-fabric scanout counter");
+#else
 _Static_assert(MISTER_MAP_ROLE_SCANOUT_COUNTER == 0x3BFB0018u, "gm-fabric scanout counter");
+#endif
 
 int main(void)
 {

@@ -28,7 +28,9 @@ while [ $# -gt 0 ]; do
     *) SEEDS+=("$1"); shift ;;
   esac
 done
-[ -n "$OUT" ] && [ ${#SEEDS[@]} -gt 0 ] || { echo "usage: $0 --out DIR [--search DIR]... SEED..." >&2; exit 2; }
+if [ -z "$OUT" ] || [ ${#SEEDS[@]} -eq 0 ]; then
+  echo "usage: $0 --out DIR [--search DIR]... SEED..." >&2; exit 2
+fi
 # /lib/arm-linux-gnueabihf matters: some sonames (libdbus-1.so.3) live only there.
 SEARCH_DIRS+=(/usr/lib/arm-linux-gnueabihf /lib/arm-linux-gnueabihf)
 mkdir -p "$OUT"
