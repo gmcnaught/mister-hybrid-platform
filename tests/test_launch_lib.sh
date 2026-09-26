@@ -289,5 +289,17 @@ wait_for "$LOG" "select: waiting for a pick" 10 || bad "select idle retry: never
 echo MENU > "$R/tmp/CORENAME"; finish
 [ -z "$(ls -A "$R/tmp/mister-hybrid" 2>/dev/null)" ] && ok || bad "select idle retry: state dir not empty: $(ls -A "$R/tmp/mister-hybrid")"
 
+# 13. core changes while waiting for the ready line: no gate, no reload
+fresh CashCowDX
+echo 0x00000005 > "$R/devmem/0x3B000028"; echo 0x00000009 > "$R/devmem/0x3B000000"
+printf '#!/bin/sh\ntrap "exit 0" TERM\nwhile :; do sleep 0.2; done\n' > "$G/engine"   # never prints the ready line
+launch TEST_GATE=1
+wait_for "$LOG" "engine: started" 10 || bad "late core change: engine not started"
+echo MENU > "$R/tmp/CORENAME"
+finish; rc=$?
+hasnt "$LOG" "WEDGED" "late core change: gate ran after the core changed"
+has "$LOG" "watchdog: core changed to 'MENU'" "late core change: watchdog stopped the engine"
+[ ! -e "$R/tmp/mister-hybrid/CashCowDX.retry" ] && ok || bad "late core change: retry mark written"
+
 echo "launch_lib: $pass passed, $fail failed"
 [ "$fail" = 0 ]

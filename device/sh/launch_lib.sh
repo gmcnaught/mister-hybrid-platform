@@ -484,7 +484,10 @@ mh_run_engine() { # attempt
         return 1
     fi
     mh_cpu_isolate
-    if [ "$MH_FABRIC_GATE" = 1 ] && ! mh_fabric_ok; then
+    # Another core is already loaded: the watchdog stops the engine; a gate
+    # retry here would reload our core over the user's choice.
+    local cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
+    if [ "$MH_FABRIC_GATE" = 1 ] && [ "$cur" = "$MH_CORENAME" ] && ! mh_fabric_ok; then
         if [ "$attempt" -lt "$MH_MAX_RETRIES" ]; then
             echo $((attempt + 1)) > "$MH_RETRY_MARK"
             [ -z "$MH_SELECT_FILE" ] || echo "$MH_SELECTED" > "$MH_RETRY_MARK.pick"
