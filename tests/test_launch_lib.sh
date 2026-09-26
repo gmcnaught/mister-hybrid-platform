@@ -99,9 +99,15 @@ wait_for() { # file pattern seconds
     while [ $i -lt $(($3 * 10)) ]; do grep -q -- "$2" "$1" 2>/dev/null && return 0; sleep 0.1; i=$((i+1)); done
     return 1
 }
-finish() { # wait for launcher exit, return its rc
+finish() { # wait for launcher exit (up to FINISH_S, default 30 s), return its rc
     local i=0
-    while kill -0 "$LPID" 2>/dev/null && [ $i -lt 150 ]; do sleep 0.1; i=$((i+1)); done
+    while kill -0 "$LPID" 2>/dev/null && [ $i -lt $((${FINISH_S:-30} * 10)) ]; do sleep 0.1; i=$((i+1)); done
+    if kill -0 "$LPID" 2>/dev/null; then
+        # A bare wait here hung CI for 20 min: fail by name instead.
+        bad "launcher still running after ${FINISH_S:-30}s (line ${BASH_LINENO[0]})"
+        tail -5 "$LOG" 2>/dev/null | sed 's/^/    | /'
+        pkill -TERM -P "$LPID" 2>/dev/null; kill -TERM "$LPID" 2>/dev/null; sleep 1; kill -9 "$LPID" 2>/dev/null
+    fi
     wait "$LPID" 2>/dev/null
 }
 
