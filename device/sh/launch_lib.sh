@@ -438,14 +438,22 @@ mh_main() {
         return 0
     fi
 
-    # Select mode. A gate retry reloaded the core under a running pick: take the
-    # current pick again. Otherwise only a pick written from now on counts.
+    # Select mode. A gate retry reloaded the core under a running pick: start
+    # that pick again. The launcher saved it, because the pick file itself may be
+    # gone (MiSTer Frontier's Master_Daemon deletes <core>.s0 on every core load).
+    # Otherwise only a pick written from now on counts.
     MH_SELECT_REF="$MH_STATE_DIR/$MH_NAME.select"
-    local have=0
+    local have=0 saved=""
     mh_select_mark
-    if [ "$attempt" -gt 0 ] && mh_select_resolve; then have=1; fi
+    if [ "$attempt" -gt 0 ]; then
+        read -r saved 2>/dev/null < "$MH_RETRY_MARK.pick"
+        if [ -n "$saved" ] && [ -f "$saved" ]; then MH_SELECT_PICK=$saved; have=1; fi
+    fi
     while :; do
-        if [ $have = 0 ]; then mh_select_wait || return 0; fi
+        if [ $have = 0 ] && ! mh_select_wait; then
+            rm -f "$MH_RETRY_MARK" "$MH_RETRY_MARK.pick"      # retry abandoned
+            return 0
+        fi
         have=0
         MH_SELECTED=$MH_SELECT_PICK
         export MH_SELECTED
@@ -479,6 +487,7 @@ mh_run_engine() { # attempt
     if [ "$MH_FABRIC_GATE" = 1 ] && ! mh_fabric_ok; then
         if [ "$attempt" -lt "$MH_MAX_RETRIES" ]; then
             echo $((attempt + 1)) > "$MH_RETRY_MARK"
+            [ -z "$MH_SELECT_FILE" ] || echo "$MH_SELECTED" > "$MH_RETRY_MARK.pick"
             mh_log "fabric gate: WEDGED -- reloading the core, attempt $((attempt + 1))/$MH_MAX_RETRIES"
             mh_stop_engine
             mh_cpu_restore
@@ -488,7 +497,7 @@ mh_run_engine() { # attempt
         fi
         mh_log "fabric gate: still wedged after $attempt attempts -- leaving the engine running"
     fi
-    rm -f "$MH_RETRY_MARK"
+    rm -f "$MH_RETRY_MARK" "$MH_RETRY_MARK.pick"
 
     # mh_stop_engine clears MH_ENGINE_PID; wait on the saved pid for the real status.
     local epid=$MH_ENGINE_PID

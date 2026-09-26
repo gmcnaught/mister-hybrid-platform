@@ -254,5 +254,40 @@ has "$LOG" "select: core changed to 'MENU' -- exiting" "select idle: exit logged
 hasnt "$LOG" "engine args" "select idle: engine started"
 [ -z "$(ls -A "$R/tmp/mister-hybrid" 2>/dev/null)" ] && ok || bad "select idle: state dir not empty"
 
+# 11. select + wedged fabric: the pick survives the core reload even though the
+#     pick file is gone (Frontier deletes <core>.s0 on core load)
+fresh CashCowDX
+echo 0x00000005 > "$R/devmem/0x3B000028"; echo 0x00000009 > "$R/devmem/0x3B000000"
+mkdir -p "$R/media/fat/config" "$R/media/fat/games/CashCowDX/q"; : > "$R/media/fat/games/CashCowDX/q/a.pck"
+S0="$R/media/fat/config/CashCowDX.s0"
+echo "main=/media/fat/linux/MiSTer_hybrid" > "$R/media/fat/MiSTer.ini"   # the hook, not the helper, relaunches
+mkfifo "$R/dev/MiSTer_cmd"
+( exec 3<>"$R/dev/MiSTer_cmd"
+  read -r l1 <&3; echo MENU > "$R/tmp/CORENAME"
+  read -r l2 <&3; rm -f "$S0"; echo CashCowDX > "$R/tmp/CORENAME" ) &
+BG+=("$!")
+launch TEST_SELECT=1 TEST_GATE=1
+wait_for "$LOG" "select: waiting for a pick" 10 || bad "select wedged: never waited"
+printf 'games/CashCowDX/q/a.pck' > "$S0"
+finish; rc=$?
+[ $rc = 1 ] && ok || bad "select wedged: rc=$rc"
+[ "$(cat "$R/tmp/mister-hybrid/CashCowDX.retry.pick" 2>/dev/null)" = "$R/media/fat/games/CashCowDX/q/a.pck" ] && ok || bad "select wedged: pick not saved"
+: > "$R/devmem/advance"
+[ ! -e "$S0" ] && ok || bad "select wedged: test setup (pick file should be gone)"
+launch TEST_SELECT=1
+wait_for "$LOG" "fabric gate: done 0x00000005 -> 0x0000000" 15 || bad "select retry: engine not restarted from the saved pick"
+has "$LOG" "select: starting $R/media/fat/games/CashCowDX/q/a.pck" "select retry: saved pick used"
+i=0; while [ -e "$R/tmp/mister-hybrid/CashCowDX.retry.pick" ] && [ $i -lt 30 ]; do sleep 0.1; i=$((i+1)); done
+[ ! -e "$R/tmp/mister-hybrid/CashCowDX.retry" ] && [ ! -e "$R/tmp/mister-hybrid/CashCowDX.retry.pick" ] && ok || bad "select retry: marks not cleared after a good gate"
+echo MENU > "$R/tmp/CORENAME"; finish
+
+# 12. select: a retry mark left when the core changes while idle is cleared
+fresh CashCowDX
+mkdir -p "$R/tmp/mister-hybrid"; echo 1 > "$R/tmp/mister-hybrid/CashCowDX.retry"
+launch TEST_SELECT=1
+wait_for "$LOG" "select: waiting for a pick" 10 || bad "select idle retry: never waited"
+echo MENU > "$R/tmp/CORENAME"; finish
+[ -z "$(ls -A "$R/tmp/mister-hybrid" 2>/dev/null)" ] && ok || bad "select idle retry: state dir not empty: $(ls -A "$R/tmp/mister-hybrid")"
+
 echo "launch_lib: $pass passed, $fail failed"
 [ "$fail" = 0 ]
