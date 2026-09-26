@@ -24,7 +24,7 @@ Design, inventory and migration order: [`docs/design.md`](docs/design.md).
 | `build/scripts/collect_runtime_libs.sh` | ✅ | Collects the DT_NEEDED closure and enforces GLIBC ≤ 2.31 |
 | `device/sh/launch_lib.sh` | ✅ | The launcher, extracted from cash.cow / donut / maldita / solarus. It runs these steps in order: core and profile check, lock, stop other fabric engines (via a claim file plus the legacy process names), wait for the FPGA, mem_wc, CPU isolation, fabric gate with core reload, watchdog |
 | `device/main-hook/` | ✅ | **One** `MiSTer_hybrid` `main=` binary for every port. It looks up `/media/fat/linux/hybrid.d/<CORENAME>.conf` and starts that port's launcher. Built against upstream Main_MiSTer `3380931`. The OSD-Reset restart that maldita has is not ported yet |
-| `device/templates/` + `tools/mister_platform.py` | ✅ | `mister-platform render mister-port.toml` writes a port's `launch.sh`, `platform/`, `hybrid.d` entry, Scripts entry, CoresMenu toggle and MGL. See `examples/cash.cow.dx/` |
+| `device/templates/` + `tools/mister_platform.py` | ✅ | `mister-platform render mister-port.toml` writes a port's `launch.sh`, `platform/`, `hybrid.d` entry, Scripts entry, CoresMenu toggle and MGL. See `examples/cash.cow.dx/` and `examples/donut.dodo/` |
 | `lib/` (libmister) | ⏳ step 3 | DDR map/WC helper, video/audio/joystick, pacing, CPU isolation |
 | `fabric/` | ⏳ step 4 | One `raster_backend_mfgpu` plus the `libmisterfabric` ABI |
 | reusable CI workflows | ⏳ step 5 | |

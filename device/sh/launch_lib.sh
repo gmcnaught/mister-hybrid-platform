@@ -13,7 +13,8 @@
 # solarus solarus_run.sh):
 #   core check -> profile check -> lock -> stop other fabric engines ->
 #   FPGA-ready wait -> mem_wc -> start engine -> (ready line) -> CPU isolate ->
-#   fabric gate (reload core + retry if the blitter wedged) -> watchdog.
+#   fabric gate (reload core + retry if the blitter wedged) -> watchdog (core
+#   change; optional mid-game fabric stall).
 #
 # Required:  MH_NAME MH_CORENAME MH_PROFILE MH_GAMEDIR MH_ENGINE MH_ENGINE_CMD
 # Hook:      mh_port_env()  if defined, called after the profile map is loaded
@@ -28,7 +29,10 @@
 #   MH_FAIL_PATTERN ("")   line in the engine log meaning "fabric bring-up failed";
 #                          the fabric gate then reloads the core as for a wedge
 #   MH_READY_TIMEOUT (60)  MH_GATE_WINDOW (8)  MH_MAX_RETRIES (4)
-#   MH_ENGINE_CPU (2)      taskset mask the engine starts on (it pins its own main thread)
+#   MH_ENGINE_CPU (2)      taskset mask the engine starts on (it pins its own main thread);
+#                          3 for an engine that does not pin (with MH_CPU_ISOLATE=0)
+#   MH_STALL_S (0)         watchdog: reload the core when C_DONE stays frozen behind
+#                          C_SUBMIT this many seconds mid-game; 0 = off (donut PLAN §1j)
 #   MH_TEST_ENV (/tmp/<name>_test.env)  sourced if present -- measurement hook; sourced
 #                          again after mh_port_env so it can override the engine env
 #
@@ -64,6 +68,7 @@ mh_defaults() {
     MH_GATE_WINDOW=${MH_GATE_WINDOW:-8}
     MH_MAX_RETRIES=${MH_MAX_RETRIES:-4}
     MH_ENGINE_CPU=${MH_ENGINE_CPU:-2}
+    MH_STALL_S=${MH_STALL_S:-0}
     MH_TEST_ENV=${MH_TEST_ENV:-$MH_ROOT/tmp/${MH_NAME,,}_test.env}
     MH_MAIN_HOOK=${MH_MAIN_HOOK:-/media/fat/linux/MiSTer_hybrid}
     MH_LOG=${MH_LOG:-$MH_LOGDIR/${MH_NAME,,}.log}
@@ -312,9 +317,13 @@ mh_cleanup() {
     wait
 }
 
-# Stop the engine when another core is loaded from the OSD.
+# Stop the engine when another core is loaded from the OSD. With MH_STALL_S,
+# also reload the core when the fabric wedges mid-game: C_DONE frozen with
+# C_SUBMIT ahead of it (donut PLAN §1j saw this ~2 min into play after a clean
+# start). While the fabric is healthy C_DONE moves every frame, or equals
+# C_SUBMIT when idle.
 mh_watchdog() {
-    local cur
+    local cur d s stall=0 last_done=""
     while kill -0 "$MH_ENGINE_PID" 2>/dev/null; do
         # read, not $(mh_corename): no fork per second next to the engine (cash.cow PLAN §6.25)
         cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
@@ -322,6 +331,24 @@ mh_watchdog() {
             mh_log "watchdog: core changed to '$cur' -- stopping the engine"
             mh_stop_engine
             break
+        fi
+        if [ "$MH_STALL_S" -gt 0 ] && [ "$MH_FABRIC_GATE" = 1 ]; then
+            d=$(mh_devmem "$MH_C_DONE"); s=$(mh_devmem "$MH_C_SUBMIT")
+            if [ -n "$d" ] && [ "$d" = "$last_done" ] && [ "$d" != "$s" ]; then
+                stall=$((stall + 1))
+            else
+                stall=0
+            fi
+            last_done=$d
+            if [ "$stall" -ge "$MH_STALL_S" ]; then
+                mh_log "watchdog: fabric WEDGED (done $d, submit $s for ${stall}s) -- reloading the core"
+                mh_stop_engine
+                echo 1 > "$MH_RETRY_MARK"
+                mh_cpu_restore
+                rm -rf "$MH_LOCKDIR"
+                mh_reload_core
+                exit 1
+            fi
         fi
         mh_nap 1
     done
