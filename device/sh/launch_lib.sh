@@ -260,9 +260,12 @@ mh_stop_engine() {
 # Wait for the ready line (or the timeout). 1: the engine died first;
 # 2: the engine logged MH_FAIL_PATTERN (its fabric bring-up failed).
 mh_wait_ready() {
-    local waited=0
+    local waited=0 cur
     while [ $waited -lt "$MH_READY_TIMEOUT" ]; do
         kill -0 "$MH_ENGINE_PID" 2>/dev/null || { mh_log "engine exited during start-up"; return 1; }
+        # Another core already: skip ahead; the gate is skipped and the watchdog stops the engine.
+        cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
+        [ "$cur" = "$MH_CORENAME" ] || return 0
         if [ -n "$MH_FAIL_PATTERN" ] && grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null; then
             mh_log "fabric gate: engine reports '$MH_FAIL_PATTERN'"
             return 2
@@ -393,8 +396,15 @@ mh_main() {
     mh_wait_ready || ready=$?
     [ "$ready" = 1 ] && exit 1
     mh_cpu_isolate
-    if [ "$MH_FABRIC_GATE" = 1 ] && { [ "$ready" = 2 ] || ! mh_fabric_ok; }; then
-        if [ "$attempt" -lt "$MH_MAX_RETRIES" ]; then
+    # The user may load another core during the ready wait or the gate window:
+    # never reload our core over that choice (seen on .81 with Solarus); the
+    # watchdog stops the engine instead.
+    local cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
+    if [ "$MH_FABRIC_GATE" = 1 ] && [ "$cur" = "$MH_CORENAME" ] && { [ "$ready" = 2 ] || ! mh_fabric_ok; }; then
+        cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
+        if [ "$cur" != "$MH_CORENAME" ]; then
+            mh_log "fabric gate: core changed to '$cur' during the gate -- no reload"
+        elif [ "$attempt" -lt "$MH_MAX_RETRIES" ]; then
             echo $((attempt + 1)) > "$MH_RETRY_MARK"
             mh_log "fabric gate: WEDGED -- reloading the core, attempt $((attempt + 1))/$MH_MAX_RETRIES"
             mh_stop_engine
