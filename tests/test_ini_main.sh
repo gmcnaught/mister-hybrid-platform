@@ -41,6 +41,26 @@ printf '[CashCowDX]\nvga_scaler=0\n' > "$MH_INI_FILE"
 mh_ini_set_main "$H"
 eq "$(sed -n 2p "$MH_INI_FILE")" "main=$H" "inserted under header"
 
+# CRLF section (MiSTer accepts it; .81 has one): found, edited in place, no
+# duplicate header, the CRLF kept, the LF sections around it untouched.
+printf '[MiSTer]\nvideo_mode=8\n[Maldita Castilla]\r\nmain=/media/fat/games/gmloader/MiSTer_Maldita\r\n\r\n[CashCowDX]\nmain=%s\n' "$H" > "$MH_INI_FILE"
+MH_INI_SECTION="Maldita Castilla"
+eq "$(mh_ini_main)" "/media/fat/games/gmloader/MiSTer_Maldita" "crlf: read"
+mh_ini_set_main "$H"; eq $? 0 "crlf: set rc"
+eq "$(mh_ini_main)" "$H" "crlf: set"
+eq "$(grep -c '^\[Maldita Castilla\]' "$MH_INI_FILE")" 1 "crlf: one header"
+eq "$(sed -n 4p "$MH_INI_FILE" | od -An -c | tr -d ' \n' | tail -c 4)" '\r\n' "crlf: ending kept"
+mh_ini_disable_main "$H" MalditaCastilla_CoresMenu
+eq "$(mh_ini_main)" "" "crlf: disabled"
+mh_ini_set_main "$H"; eq "$(mh_ini_main)" "$H" "crlf: re-enabled"
+eq "$(grep -c "main=$H" "$MH_INI_FILE")" 2 "crlf: re-enable reused the line"
+MH_INI_SECTION=CashCowDX; eq "$(mh_ini_main)" "$H" "crlf: other section untouched"
+printf '[Maldita Castilla]\r\nvideo_mode=0\r\n' > "$MH_INI_FILE"
+MH_INI_SECTION="Maldita Castilla"; mh_ini_set_main "$H"
+eq "$(mh_ini_main)" "$H" "crlf: inserted under header"
+eq "$(grep -c '^\[Maldita Castilla\]' "$MH_INI_FILE")" 1 "crlf: insert kept one header"
+MH_INI_SECTION=CashCowDX
+
 # No file yet.
 rm -f "$MH_INI_FILE"
 mh_ini_set_main "$H"; eq "$(mh_ini_main)" "$H" "created file"
