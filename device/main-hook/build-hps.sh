@@ -27,6 +27,11 @@ OUT="${OUTPUT_DIR:-$ROOT/build/main-hook}"
 SRC="$OUT/src"
 IMAGE="${BUILD_IMAGE:-mister-armhf-base:bullseye}"
 PRJ=MiSTer_hybrid
+# Upstream's release toolchain (arm-none-linux-gnueabihf) defaults to Cortex-A9 +
+# NEON; Debian's armhf gcc defaults to vfpv3-d16. Upstream code from ~2026-09
+# (scaler.cpp) no longer compiles without __ARM_NEON. Same flags as
+# build/make/mister-flags.mk (neon, NOT neon-vfpv4: SIGILL on the A9).
+ARCH_FLAGS="-mcpu=cortex-a9 -mfpu=neon -mfloat-abi=hard"
 
 mkdir -p "$OUT"
 if [ ! -d "$SRC/.git" ]; then
@@ -104,7 +109,8 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
     docker build -q -t "$IMAGE" -f "$ROOT/build/docker/Dockerfile.base" "$ROOT"
 fi
 docker run --rm -u "$(id -u):$(id -g)" -v "$SRC:/src" -w /src "$IMAGE" \
-    make -f Makefile.hybrid BASE=arm-linux-gnueabihf -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
+    make -f Makefile.hybrid BASE=arm-linux-gnueabihf \
+    CC="arm-linux-gnueabihf-gcc $ARCH_FLAGS" -j"$(sysctl -n hw.ncpu 2>/dev/null || nproc)"
 
 cp "$SRC/bin/$PRJ" "$OUT/$PRJ"
 # A stock Main_MiSTer renamed MiSTer_hybrid runs fine and never starts a game;
