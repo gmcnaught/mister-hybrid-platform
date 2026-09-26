@@ -61,6 +61,44 @@ class Manifest(unittest.TestCase):
         with self.assertRaisesRegex(mp.ManifestError, "has no fabric"):
             mp.render(m, Path(tempfile.mkdtemp()), None)
 
+    def test_corename_with_space(self):
+        m = mp.load_manifest(manifest(name="MalditaCastilla", extra_port='corename = "Maldita Castilla"'))
+        self.assertEqual(m["port"]["gamedir"], "/media/fat/games/MalditaCastilla")
+        for bad in (" Maldita Castilla", "Maldita Castilla ", "Maldita/Castilla", "Maldita;C"):
+            with self.assertRaisesRegex(mp.ManifestError, "CONF_STR name"):
+                mp.load_manifest(manifest(name="MalditaCastilla", extra_port=f'corename = "{bad}"'))
+
+    def test_gamedir_workdir(self):
+        m = mp.load_manifest(manifest(extra_port='gamedir = "/media/fat/games/Cash Cow"',
+                                      extra_launch='workdir = "/media/fat/games/gmloader"'))
+        self.assertEqual(m["launch"]["workdir"], "/media/fat/games/gmloader")
+        self.assertEqual(mp.load_manifest(manifest())["launch"]["workdir"], "/media/fat/games/CashCowDX")
+        for bad in ("games/x", "/tmp/x", "/media/fat/games/../etc", "/media/fat/games/a;b"):
+            with self.assertRaisesRegex(mp.ManifestError, "absolute /media/fat directory"):
+                mp.load_manifest(manifest(extra_port=f'gamedir = "{bad}"'))
+
+    def test_osd_reset(self):
+        out = Path(tempfile.mkdtemp())
+        mp.render(mp.load_manifest(manifest(extra_launch="osd_reset = 19")), out, None)
+        conf = (out / "linux/hybrid.d/CashCowDX.conf").read_text()
+        self.assertIn("\nosd_reset=19\n", conf)
+        self.assertIn("reset_clear=/tmp/mister-hybrid/CashCowDX.retry\n", conf)
+        self.assertIn("reset_clear=/tmp/mister-hybrid/CashCowDX.lock/pid\nreset_clear=/tmp/mister-hybrid/CashCowDX.lock\n", conf)
+        out2 = Path(tempfile.mkdtemp())
+        mp.render(mp.load_manifest(manifest()), out2, None)
+        self.assertNotIn("osd_reset", (out2 / "linux/hybrid.d/CashCowDX.conf").read_text())
+        for bad in ("32", "-1", "true", '"19"'):
+            with self.assertRaisesRegex(mp.ManifestError, "osd_reset"):
+                mp.load_manifest(manifest(extra_launch=f"osd_reset = {bad}"))
+
+    def test_engine_log_is_a_name(self):
+        with self.assertRaisesRegex(mp.ManifestError, "engine_log"):
+            mp.load_manifest(manifest(extra_launch='engine_log = "../x.log"'))
+
+    def test_maldita_example_validates(self):
+        m = mp.load_manifest(ROOT / "examples/maldita.castilla/mister-port.toml")
+        self.assertEqual(m["port"]["corename"], "Maldita Castilla")
+
     def test_quoting(self):
         self.assertEqual(mp.dq('a "b" `c` \\d $E'), '"a \\"b\\" \\`c\\` \\\\d $E"')
 

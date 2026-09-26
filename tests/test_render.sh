@@ -28,7 +28,7 @@ fi
 has "$F/linux/hybrid.d/CashCowDX.conf" "^launcher=/media/fat/games/CashCowDX/launch.sh$" "registry launcher"
 has "$F/linux/hybrid.d/CashCowDX.conf" "^profile=gm-fabric$" "registry profile"
 has "$F/_Other/CashCowDX.mgl" "<rbf>_Other/CashCowDX</rbf>" "mgl rbf prefix"
-has "$F/Scripts/CashCowDX.sh" "missing \$GAMEDIR/CashCowDX.pck -- copy it from your GOG install" "required file check"
+has "$F/Scripts/CashCowDX.sh" "missing \$WORKDIR/CashCowDX.pck -- copy it from your GOG install" "required file check"
 
 # --- CoresMenu toggle: on, off, on again (re-enables the commented line) --------
 INI="$T/MiSTer.ini"
@@ -92,6 +92,61 @@ wait "$LPID" 2>/dev/null; LPID=""
 has "$LOG" "watchdog: core changed" "rendered: watchdog"
 # The stub engine exits 0 on TERM; before the saved-pid fix this read "exited (1)" (wait "").
 has "$LOG" "engine: exited (0)" "rendered: engine exit status"
+
+# --- a pre-platform layout: core name with a space, workdir, OSD Reset ----------
+has "$F/linux/hybrid.d/CashCowDX.conf" "^noengine=/media/fat/games/CashCowDX/NOENGINE$" "registry noengine"
+grep -q "osd_reset" "$F/linux/hybrid.d/CashCowDX.conf" && bad "cash cow registry has osd_reset (not opted in)" || ok
+M="$T/maldita"; MF="$M/media/fat"; MG="$MF/games/Maldita Castilla"
+python3 "$PLAT/tools/mister_platform.py" render "$PLAT/examples/maldita.castilla/mister-port.toml" \
+    --out "$MF" --hook-binary "$T/MiSTer_hybrid" > /dev/null && ok || bad "maldita render failed"
+MREG="$MF/linux/hybrid.d/Maldita Castilla.conf"
+has "$MREG" "^launcher=/media/fat/games/Maldita Castilla/launch.sh$" "maldita registry launcher"
+has "$MREG" "^noengine=/media/fat/games/gmloader/NOENGINE$" "maldita registry noengine (workdir)"
+has "$MREG" "^osd_reset=19$" "maldita registry osd_reset"
+has "$MREG" "^reset_clear=/tmp/mister-hybrid/MalditaCastilla.lock/pid$" "maldita registry reset_clear"
+[ -f "$MF/_Other/Maldita Castilla.mgl" ] && ok || bad "maldita mgl name"
+has "$MF/Scripts/MalditaCastilla.sh" "grep -q '\[M\]aldita Castilla/launch.sh'" "maldita Scripts: launcher_running pattern"
+if command -v shellcheck >/dev/null; then
+    shellcheck -s bash "$MG/launch.sh" "$MF"/Scripts/*.sh && ok || bad "shellcheck on rendered maldita scripts"
+fi
+# CoresMenu on a section whose name has a space
+printf '[MiSTer]\nvideo_mode=8\n[Maldita Castilla]\nmain=/media/fat/games/gmloader/MiSTer_Maldita\n' > "$INI"
+env MH_HOOK="$MF/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$MF/linux/hybrid.d" \
+    MH_PLATFORM_DIR="$MG/platform" bash "$MF/Scripts/MalditaCastilla_CoresMenu.sh" >/dev/null 2>&1 && ok || bad "maldita toggle rc"
+has "$INI" "^main=$MF/linux/MiSTer_hybrid$" "maldita toggle: main line"
+[ "$(grep -c '^\[Maldita Castilla\]$' "$INI")" = 1 ] && ok || bad "maldita toggle: duplicated section"
+
+# The rendered launcher: cwd = workdir, engine log name, test env after the port env,
+# fail pattern -> wedged without sampling.
+mkdir -p "$M/tmp" "$M/proc" "$MF/games/gmloader" "$MF/_Other"
+printf '#!/bin/sh\n[ "$1" = -n ] && shift 2\nexec "$@"\n' > "$T/bin/nice"; chmod +x "$T/bin/nice"
+cat > "$MF/games/gmloader/gmloader" <<'EOS'
+#!/bin/sh
+echo "gmloader $* cwd=$(pwd) blitter=$GMLOADER_BLITTER ld=$LD_LIBRARY_PATH"
+echo "fabric bring-up ${STUB_BRINGUP:-ok}"
+trap 'exit 0' TERM
+while :; do sleep 0.2; done
+EOS
+chmod +x "$MF/games/gmloader/gmloader"
+echo 'export GMLOADER_BLITTER=0' > "$MF/games/gmloader/bench.env"
+: > "$MF/_Other/MalditaCastilla_20260925.rbf"
+echo "Maldita Castilla" > "$M/tmp/CORENAME"
+mrun() { env PATH="$T/bin:$PATH" MH_ROOT="$M" MH_DEVMEM=devmem MH_CPU_ISOLATE=0 MH_GATE_WINDOW=0 "$@" bash "$MG/launch.sh"; }
+MLOG="$MF/logs/MalditaCastilla/maldita.log"
+mrun & LPID=$!
+for _ in $(seq 1 100); do grep -q "fabric gate" "$MLOG" 2>/dev/null && break; sleep 0.1; done
+has "$MLOG" "gmloader -c gmloader.json cwd=$MF/games/gmloader blitter=0 ld=$MF/games/gmloader/mesa:$MF/games/gmloader" "maldita: cwd, env, test env overrides"
+has "$MLOG" "fabric gate: done" "maldita: gate sampled"
+echo MENU > "$M/tmp/CORENAME"
+for _ in $(seq 1 100); do kill -0 "$LPID" 2>/dev/null || break; sleep 0.1; done
+wait "$LPID" 2>/dev/null; LPID=""
+echo "Maldita Castilla" > "$M/tmp/CORENAME"
+rm -f "$MLOG"; mrun STUB_BRINGUP=SOFT-FAILED MH_MAX_RETRIES=0 & LPID=$!
+for _ in $(seq 1 100); do grep -q "fabric gate:" "$MLOG" 2>/dev/null && break; sleep 0.1; done
+has "$MLOG" "fabric gate: engine reports 'fabric bring-up SOFT-FAILED'" "maldita: fail pattern"
+echo MENU > "$M/tmp/CORENAME"
+for _ in $(seq 1 100); do kill -0 "$LPID" 2>/dev/null || break; sleep 0.1; done
+wait "$LPID" 2>/dev/null; LPID=""
 
 echo "render: $pass passed, $fail failed"
 [ "$fail" = 0 ]

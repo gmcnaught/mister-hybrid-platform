@@ -19,7 +19,11 @@ Manifest (mister-port.toml):
     [port]
     name     = "CashCowDX"      # games/<name>, logs/<name>, Scripts/<name>.sh, RBF prefix
     title    = "Cash Cow DX"
-    corename = "CashCowDX"      # CONF_STR name (/tmp/CORENAME); default: name
+    corename = "CashCowDX"      # CONF_STR name (/tmp/CORENAME, MiSTer.ini section); default: name.
+                                # May contain spaces ("Maldita Castilla"), not at either end.
+    gamedir  = "/media/fat/games/Maldita Castilla"
+                                # where launch.sh and platform/ go; default /media/fat/games/<name>
+    mgl      = "Maldita Castilla"  # _Other/<mgl>.mgl; default: name
     profile  = "gm-fabric"      # spec/profiles/<profile>.toml; must list corename
     engine   = "godot4"         # informational
 
@@ -31,6 +35,12 @@ Manifest (mister-port.toml):
     mem_wc        = true                      # default true
     fabric_gate   = true                      # default: true when the profile has a fabric
     env           = { MISTER_JOY = "1", XDG_DATA_HOME = "$MH_GAMEDIR/data" }
+    workdir       = "/media/fat/games/gmloader" # engine cwd, required_files, NOENGINE; default gamedir
+    engine_log    = "maldita.log"             # file in logs/<name>/; default <name lowercased>.log
+    fail_pattern  = "SOFT-FAILED"             # optional: this in the engine log = fabric wedged
+    test_env      = "$MH_WORKDIR/bench.env"   # optional: sourced before and after the port env
+    osd_reset     = 19                        # optional: CONF_STR "T" status bit whose OSD pulse
+                                              # makes MiSTer_hybrid restart the launcher
 
     [scripts]
     required_files = [ ["CashCowDX.pck", "copy it from your GOG install (see README.md)"] ]
@@ -59,6 +69,10 @@ from mister_spec import load_all  # noqa: E402
 
 TEMPLATES = ROOT / "device" / "templates"
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,40}$")
+# CONF_STR core names may contain spaces (hybrid_registry.c accepts the same set).
+CORENAME_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9 _.-]{0,62}[A-Za-z0-9_.-])?$")
+FAT_DIR_RE = re.compile(r"^/media/fat/[A-Za-z0-9 _.-]+(?:/[A-Za-z0-9 _.-]+)*$")
+FILE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 ENV_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
@@ -95,8 +109,22 @@ def load_manifest(path: Path) -> dict:
         raise ManifestError(f"[port] name {name!r}: letters, digits, _ only (it becomes paths and a CORENAME match)")
     port.setdefault("corename", name)
     port.setdefault("title", name)
-    if not NAME_RE.match(port["corename"]):
+    if not CORENAME_RE.match(port["corename"]):
         raise ManifestError(f"[port] corename {port['corename']!r} is not a valid CONF_STR name")
+    port.setdefault("gamedir", f"/media/fat/games/{name}")
+    port.setdefault("mgl", name)
+    launch.setdefault("workdir", port["gamedir"])
+    for sec, key in (("port", "gamedir"), ("launch", "workdir")):
+        v = m[sec][key]
+        if not FAT_DIR_RE.match(v) or "/../" in v + "/" or "/./" in v + "/":
+            raise ManifestError(f"[{sec}] {key} {v!r}: expected an absolute /media/fat directory")
+    if not CORENAME_RE.match(port["mgl"]):
+        raise ManifestError(f"[port] mgl {port['mgl']!r}: letters, digits, space, _ . - only")
+    if "engine_log" in launch and not FILE_RE.match(launch["engine_log"]):
+        raise ManifestError(f"[launch] engine_log {launch['engine_log']!r}: a file name, not a path")
+    bit = launch.get("osd_reset")
+    if bit is not None and (isinstance(bit, bool) or not isinstance(bit, int) or not 0 <= bit <= 31):
+        raise ManifestError(f"[launch] osd_reset {bit!r}: the CONF_STR T option's status bit, 0..31")
     if not re.match(r"^[A-Za-z0-9_.+-]+$", launch["process"]):
         raise ManifestError(f"[launch] process {launch['process']!r} is not a process name")
     if not isinstance(launch["command"], list) or not launch["command"]:
@@ -136,7 +164,8 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     port, launch, scripts = m["port"], m["launch"], m.get("scripts", {})
     prof = m["_profile"]
     name = port["name"]
-    gamedir = f"/media/fat/games/{name}"
+    gamedir = port["gamedir"]
+    workdir = launch["workdir"]
     logdir = f"/media/fat/logs/{name}"
     has_fabric = "fabric_ctrl" in prof.roles
     gate = launch.get("fabric_gate", has_fabric)
@@ -147,7 +176,7 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     req = []
     for entry in scripts.get("required_files", []):
         f, hint = (entry + [""])[:2] if isinstance(entry, list) else (entry, "")
-        req.append(f'[ -f "$GAMEDIR/{f}" ] || die {dq(f"missing $GAMEDIR/{f}" + (f" -- {hint}" if hint else ""))}')
+        req.append(f'[ -f "$WORKDIR/{f}" ] || die {dq(f"missing $WORKDIR/{f}" + (f" -- {hint}" if hint else ""))}')
     extra = ""
     if "extra" in scripts:
         extra = "\n# --- port-specific (mister-port.toml [scripts] extra) ---\n" + (m["_dir"] / scripts["extra"]).read_text()
@@ -170,10 +199,30 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
             "\t\t[ -f \"$w\" ] && ! grep -q \"^main=$w\" \"$MH_INI_FILE\" 2>/dev/null && rm -f \"$w\" && echo \"launcher: removed $w\"\n"
             "\tdone\n"
             "fi\n")
+    # Optional launcher variables (launch_lib.sh defaults apply when absent).
+    opt = []
+    if workdir != gamedir:
+        opt.append(f'MH_WORKDIR="${{MH_ROOT:-}}{workdir}"')
+    if "engine_log" in launch:
+        opt.append(f'MH_LOG="${{MH_ROOT:-}}{logdir}/{launch["engine_log"]}"')
+    if "fail_pattern" in launch:
+        opt.append(f"MH_FAIL_PATTERN={dq(launch['fail_pattern'])}")
+    if "test_env" in launch:
+        opt.append(f"MH_TEST_ENV={dq(launch['test_env'])}")
+    # OSD Reset: MiSTer_hybrid restarts the launcher on the T option's pulse, first
+    # clearing launch_lib's retry mark and lock (MH_STATE_DIR/<name>.*) so the fresh
+    # launcher neither inherits a spent retry budget nor stands down on the lock.
+    reset_lines = ""
+    if launch.get("osd_reset") is not None:
+        st = f"/tmp/mister-hybrid/{name}"
+        reset_lines = (f"osd_reset={launch['osd_reset']}\n"
+                       f"reset_clear={st}.retry\nreset_clear={st}.lock/pid\nreset_clear={st}.lock\n")
+    base = gamedir.rsplit("/", 1)[1]
     values = {
         "NAME": name, "TITLE": port["title"], "CORENAME": port["corename"], "PROFILE": prof.name,
-        "GAMEDIR": gamedir, "LOGDIR": logdir, "PROCESS": launch["process"],
-        "NAME_FIRST": name[0], "NAME_REST": name[1:],
+        "GAMEDIR": gamedir, "WORKDIR": workdir, "LOGDIR": logdir, "PROCESS": launch["process"],
+        "GAMEDIR_BASE_FIRST": base[0], "GAMEDIR_BASE_REST": base[1:],
+        "OPTIONAL_VARS": "\n".join(opt), "OSD_RESET_LINES": reset_lines,
         "COMMAND": " ".join(dq(str(a)) for a in launch["command"]),
         "READY_PATTERN": dq(launch.get("ready_pattern", "")),
         "CPU_ISOLATE": "1" if launch.get("cpu_isolate", True) else "0",
@@ -192,13 +241,14 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         write(p, subst((TEMPLATES / template).read_text(), values), executable)
         written.append(p)
 
-    emit(f"games/{name}/launch.sh", "launch.sh.in", True)
+    groot = gamedir[len("/media/fat/"):]
+    emit(f"{groot}/launch.sh", "launch.sh.in", True)
     emit(f"linux/hybrid.d/{port['corename']}.conf", "hybrid.conf.in")
     emit(f"Scripts/{name}.sh", "Scripts.sh.in", True)
     emit(f"Scripts/{name}_CoresMenu.sh", "CoresMenu.sh.in", True)
-    emit(f"_Other/{name}.mgl", "mgl.in")
+    emit(f"_Other/{port['mgl']}.mgl", "mgl.in")
 
-    plat = out / "games" / name / "platform"
+    plat = out / groot / "platform"
     gen = ROOT / "spec" / "generated"
     for src in [ROOT / "device/sh/launch_lib.sh", ROOT / "device/sh/mem_wc_load.sh", ROOT / "device/sh/ini_main.sh",
                 gen / f"mister_map_{prof.name.replace('-', '_')}.env", gen / "mister_mem_wc.env",

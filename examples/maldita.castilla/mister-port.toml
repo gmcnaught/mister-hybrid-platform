@@ -1,0 +1,28 @@
+# Maldita Castilla expressed as a platform manifest (mirrors
+# maldita.castilla-mister/games/Maldita Castilla/launch.sh at 2026-09-26).
+# Exercises the keys for an install that predates the platform layout: a CONF_STR
+# core name with a space, the launcher in games/Maldita Castilla, the engine
+# payload in games/gmloader, and the OSD Reset restart.
+[port]
+name     = "MalditaCastilla"
+title    = "Maldita Castilla"
+corename = "Maldita Castilla"
+gamedir  = "/media/fat/games/Maldita Castilla"
+mgl      = "Maldita Castilla"
+profile  = "gm-fabric"
+engine   = "gmloader"
+
+[launch]
+process       = "gmloader"
+command       = ["nice", "-n", "-10", "./gmloader", "-c", "gmloader.json"]
+workdir       = "/media/fat/games/gmloader"
+engine_log    = "maldita.log"
+ready_pattern = "fabric bring-up"
+fail_pattern  = "fabric bring-up SOFT-FAILED"
+test_env      = "$MH_WORKDIR/bench.env"
+osd_reset     = 19
+env = { GMLOADER_BLITTER = "2", GMLOADER_RASTER = "mfgpu", LD_LIBRARY_PATH = "$MH_WORKDIR/mesa:$MH_WORKDIR" }
+
+[scripts]
+required_files = [ ["mygame.apk", "copy it from the release zip (see README.md)"], ["gmloader.json", "extract the release zip over /media/fat again"] ]
+legacy_main    = ["/media/fat/games/gmloader/MiSTer_Maldita"]

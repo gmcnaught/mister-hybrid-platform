@@ -13,7 +13,7 @@
 #          joy_ddr_reader.cpp, native_audio_writer.c.
 name        = "gm-fabric"
 description = "Maldita-family blitter core: 16 MiB fabric window at 0x3B000000, FB/joy block relocated to 0x3BF40000"
-cores       = ["MalditaCastilla", "CursedCastilla", "DonutDodo", "CashCowDX"]
+cores       = ["Maldita Castilla", "Cursed Castilla", "DonutDodo", "CashCowDX"]
 fb_default  = [288, 216]   # branch donutdodo/fb-320x240 builds 320x240
 
 [regions.legacy]

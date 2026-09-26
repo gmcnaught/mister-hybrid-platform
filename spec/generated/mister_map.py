@@ -7,8 +7,8 @@ PROFILES = {
    "rate": 48000
   },
   "cores": [
-   "MalditaCastilla",
-   "CursedCastilla",
+   "Maldita Castilla",
+   "Cursed Castilla",
    "DonutDodo",
    "CashCowDX"
   ],
@@ -456,5 +456,5 @@ PROFILES = {
   }
  }
 }
-CORES = {"CashCowDX": "gm-fabric", "CursedCastilla": "gm-fabric", "DonutDodo": "gm-fabric", "MalditaCastilla": "gm-fabric", "OpenBOR": "openbor-classic", "Solarus": "solarus-fabric"}
+CORES = {"CashCowDX": "gm-fabric", "Cursed Castilla": "gm-fabric", "DonutDodo": "gm-fabric", "Maldita Castilla": "gm-fabric", "OpenBOR": "openbor-classic", "Solarus": "solarus-fabric"}
 MEM_WC_UNION = (0x3B000000, 0x01200000)

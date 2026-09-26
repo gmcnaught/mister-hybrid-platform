@@ -27,6 +27,11 @@ pid_t hybrid_child_spawn(char *const argv[], const char *log_path);
  * its exit status, or 128+signal if it was killed. */
 bool  hybrid_child_reap(pid_t pid, int *exit_code_out);
 
+/* Signal the child's whole process group (it leads one: setsid in spawn), so an
+ * OSD Reset reaches the engine the launcher runs as a background job, not only
+ * the launcher shell. Falls back to the single pid if the group is gone. */
+void  hybrid_child_signal_group(pid_t pid, int sig);
+
 #ifdef __cplusplus
 }
 #endif

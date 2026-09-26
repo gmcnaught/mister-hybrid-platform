@@ -20,13 +20,18 @@
 #                           and before the engine starts: export the engine env here
 # Optional (default):
 #   MH_LOGDIR (/media/fat/logs/$MH_NAME)   MH_PLATFORM_DIR ($MH_GAMEDIR/platform)
+#   MH_WORKDIR ($MH_GAMEDIR)  the engine's working directory (maldita: games/gmloader)
+#   MH_LOG ($MH_LOGDIR/<name lowercased>.log)  the engine log
+#   MH_FAIL_PATTERN ("")   line in the engine log meaning "fabric bring-up failed":
+#                          the fabric gate treats it as wedged without sampling
 #   MH_RBF_GLOB (/media/fat/_Other/${MH_NAME}_*.rbf)
 #   MH_MEM_WC (1)  MH_CPU_ISOLATE (1)  MH_FABRIC_GATE (1 if the profile has a fabric)
 #   MH_READY_PATTERN ("")  line in the engine log meaning "fabric is up"; empty =
 #                          wait MH_READY_TIMEOUT seconds unless the engine exits
 #   MH_READY_TIMEOUT (60)  MH_GATE_WINDOW (8)  MH_MAX_RETRIES (4)
 #   MH_ENGINE_CPU (2)      taskset mask the engine starts on (it pins its own main thread)
-#   MH_TEST_ENV (/tmp/<name>_test.env)  sourced if present -- measurement hook
+#   MH_TEST_ENV (/tmp/<name>_test.env)  sourced if present -- measurement hook; sourced
+#                          again after mh_port_env so it can override the engine env
 #
 # Everything before the engine starts avoids forks where a builtin does: each
 # fork costs ~10-25 ms on the A9 while MiSTer loads the core (cash.cow PLAN §6.28).
@@ -51,6 +56,8 @@ mh_defaults() {
     : "${MH_NAME:?}" "${MH_CORENAME:?}" "${MH_PROFILE:?}" "${MH_GAMEDIR:?}" "${MH_ENGINE:?}"
     MH_LOGDIR=${MH_LOGDIR:-$MH_ROOT/media/fat/logs/$MH_NAME}
     MH_PLATFORM_DIR=${MH_PLATFORM_DIR:-$MH_GAMEDIR/platform}
+    MH_WORKDIR=${MH_WORKDIR:-$MH_GAMEDIR}
+    MH_FAIL_PATTERN=${MH_FAIL_PATTERN:-}
     MH_RBF_GLOB=${MH_RBF_GLOB:-$MH_ROOT/media/fat/_Other/${MH_NAME}_*.rbf}
     MH_MEM_WC=${MH_MEM_WC:-1}
     MH_CPU_ISOLATE=${MH_CPU_ISOLATE:-1}
@@ -61,7 +68,7 @@ mh_defaults() {
     MH_ENGINE_CPU=${MH_ENGINE_CPU:-2}
     MH_TEST_ENV=${MH_TEST_ENV:-$MH_ROOT/tmp/${MH_NAME,,}_test.env}
     MH_MAIN_HOOK=${MH_MAIN_HOOK:-/media/fat/linux/MiSTer_hybrid}
-    MH_LOG="$MH_LOGDIR/${MH_NAME,,}.log"
+    MH_LOG=${MH_LOG:-$MH_LOGDIR/${MH_NAME,,}.log}
     MH_LOCKDIR="$MH_STATE_DIR/$MH_NAME.lock"
     MH_RETRY_MARK="$MH_STATE_DIR/$MH_NAME.retry"
 }
@@ -263,6 +270,10 @@ mh_wait_ready() {
 # Blitter still retiring work? (C_DONE advances, or nothing is outstanding)
 mh_fabric_ok() {
     local d0 d1 s1
+    if [ -n "$MH_FAIL_PATTERN" ] && grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null; then
+        mh_log "fabric gate: engine reports '$MH_FAIL_PATTERN'"
+        return 1
+    fi
     d0=$(mh_devmem "$MH_C_DONE"); mh_nap "$MH_GATE_WINDOW"
     d1=$(mh_devmem "$MH_C_DONE"); s1=$(mh_devmem "$MH_C_SUBMIT")
     mh_log "fabric gate: done $d0 -> $d1 (submit $s1)"
@@ -323,7 +334,7 @@ mh_main() {
     mkdir -p "$MH_LOGDIR"
     # shellcheck disable=SC1090
     [ -f "$MH_TEST_ENV" ] && . "$MH_TEST_ENV"
-    cd "$MH_GAMEDIR" || exit 1
+    cd "$MH_WORKDIR" || exit 1
     local rc
     mh_check_core >> "$MH_LOGDIR/launch.log"; rc=$?
     if [ $rc -ne 0 ]; then
@@ -349,6 +360,8 @@ mh_main() {
     read -r attempt 2>/dev/null < "$MH_RETRY_MARK"; case "$attempt" in ''|*[!0-9]*) attempt=0 ;; esac
     # The port's engine environment (rendered launch.sh), after the profile map.
     if declare -F mh_port_env >/dev/null; then mh_port_env; fi
+    # shellcheck disable=SC1090
+    [ -f "$MH_TEST_ENV" ] && . "$MH_TEST_ENV"
     mh_start_engine
     mh_wait_ready || exit 1
     mh_cpu_isolate
