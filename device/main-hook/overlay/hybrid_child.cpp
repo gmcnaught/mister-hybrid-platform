@@ -1,4 +1,5 @@
 #include "hybrid_child.h"
+#include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/wait.h>
@@ -50,4 +51,12 @@ bool hybrid_child_reap(pid_t pid, int *exit_code_out)
         else *exit_code_out = -1;
     }
     return true;
+}
+
+void hybrid_child_signal_group(pid_t pid, int sig)
+{
+    if (pid <= 0) return;
+    /* If setsid() failed the child is in OUR group, whose pgid is not pid: the
+     * negative-pid send fails with ESRCH rather than signalling MiSTer's group. */
+    if (kill(-pid, sig) != 0) kill(pid, sig);
 }

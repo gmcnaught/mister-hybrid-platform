@@ -6,17 +6,18 @@
 # With Scripts -> @NAME@_CoresMenu turned on (MiSTer.ini [@CORENAME@]
 # main=/media/fat/linux/MiSTer_hybrid), loading the core also starts the game and
 # this entry only loads the core. Otherwise this entry starts
-# games/@NAME@/launch.sh itself once the core is up.
+# games/@GDIR@/launch.sh itself once the core is up.
 
-GAMEDIR=@GAMEDIR@
+GAMEDIR="@GAMEDIR@"
 HANDLER="$GAMEDIR/launch.sh"
 HOOK=/media/fat/linux/MiSTer_hybrid
+# shellcheck disable=SC2034  # read by platform/ini_main.sh
 MH_INI_FILE=/media/fat/MiSTer.ini
 # shellcheck disable=SC2034  # read by platform/ini_main.sh
 MH_INI_SECTION="@CORENAME@"
 RBF_GLOB="/media/fat/_Other/@NAME@_*.rbf"
 CORENAME="@CORENAME@"
-LOGDIR=@LOGDIR@
+LOGDIR="@LOGDIR@"
 CORE_WAIT_S=30
 
 mkdir -p "$LOGDIR"
@@ -38,7 +39,7 @@ chmod +x "$HANDLER" "$HOOK" "$GAMEDIR/@PROCESS@" 2>/dev/null
 # Only this core's section: every hybrid port's main= names the same hook.
 main_on() { [ -x "$HOOK" ] && [ -f "/media/fat/linux/hybrid.d/$CORENAME.conf" ] && [ "$(mh_ini_main)" = "$HOOK" ]; }
 # shellcheck disable=SC2009  # busybox pgrep -f is not guaranteed on MiSTer
-launcher_running() { ps -o args | grep -q '[@NAME_FIRST@]@NAME_REST@/launch.sh'; }
+launcher_running() { ps -o args | grep -q '[@GDIR_FIRST@]@GDIR_REST@/launch.sh'; }
 
 # --- core ------------------------------------------------------------------------
 if [ "$(cat /tmp/CORENAME 2>/dev/null)" != "$CORENAME" ]; then

@@ -93,5 +93,93 @@ has "$LOG" "watchdog: core changed" "rendered: watchdog"
 # The stub engine exits 0 on TERM; before the saved-pid fix this read "exited (1)" (wait "").
 has "$LOG" "engine: exited (0)" "rendered: engine exit status"
 
+# --- maldita: core name with a space, gamedir, mgl, engine_log, test_env, OSD Reset
+has "$F/linux/hybrid.d/CashCowDX.conf" "^noengine=/media/fat/games/CashCowDX/NOENGINE$" "registry noengine"
+grep -q "osd_reset" "$F/linux/hybrid.d/CashCowDX.conf" && bad "cash cow registry has osd_reset (not opted in)" || ok
+M="$T/maldita"; MF="$M/media/fat"; MG="$MF/games/gmloader"
+python3 "$PLAT/tools/mister_platform.py" render "$PLAT/examples/maldita.castilla/mister-port.toml" \
+    --out "$MF" --hook-binary "$T/MiSTer_hybrid" > /dev/null && ok || bad "maldita render failed"
+MREG="$MF/linux/hybrid.d/Maldita Castilla.conf"
+has "$MREG" "^launcher=/media/fat/games/gmloader/launch.sh$" "maldita registry launcher"
+has "$MREG" "^noengine=/media/fat/games/gmloader/NOENGINE$" "maldita registry noengine"
+has "$MREG" "^osd_reset=19$" "maldita registry osd_reset"
+has "$MREG" "^reset_clear=/tmp/mister-hybrid/MalditaCastilla.lock/pid$" "maldita registry reset_clear"
+[ -f "$MF/_Other/Maldita Castilla.mgl" ] && ok || bad "maldita mgl name"
+has "$MF/Scripts/MalditaCastilla.sh" "grep -q '\[g\]mloader/launch.sh'" "maldita Scripts: launcher_running pattern"
+if command -v shellcheck >/dev/null; then
+    shellcheck -s bash "$MG/launch.sh" "$MF"/Scripts/*.sh && ok || bad "shellcheck on rendered maldita scripts"
+fi
+# CoresMenu on a section whose name has a space
+printf '[MiSTer]\nvideo_mode=8\n[Maldita Castilla]\nmain=/media/fat/games/gmloader/MiSTer_Maldita\n' > "$INI"
+env MH_HOOK="$MF/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$MF/linux/hybrid.d" \
+    MH_PLATFORM_DIR="$MG/platform" bash "$MF/Scripts/MalditaCastilla_CoresMenu.sh" >/dev/null 2>&1 && ok || bad "maldita toggle rc"
+has "$INI" "^main=$MF/linux/MiSTer_hybrid$" "maldita toggle: main line"
+[ "$(grep -c '^\[Maldita Castilla\]$' "$INI")" = 1 ] && ok || bad "maldita toggle: duplicated section"
+
+# The rendered launcher: cwd = gamedir, engine log name, test env after the port env,
+# fail pattern -> wedged.
+mkdir -p "$M/tmp" "$M/proc" "$MF/games/gmloader" "$MF/_Other"
+printf '#!/bin/sh\n[ "$1" = -n ] && shift 2\nexec "$@"\n' > "$T/bin/nice"; chmod +x "$T/bin/nice"
+cat > "$MF/games/gmloader/gmloader" <<'EOS'
+#!/bin/sh
+echo "gmloader $* cwd=$(pwd) blitter=$GMLOADER_BLITTER ld=$LD_LIBRARY_PATH"
+echo "fabric bring-up ${STUB_BRINGUP:-ok}"
+trap 'exit 0' TERM
+while :; do sleep 0.2; done
+EOS
+chmod +x "$MF/games/gmloader/gmloader"
+echo 'export GMLOADER_BLITTER=0' > "$MF/games/gmloader/bench.env"
+: > "$MF/_Other/MalditaCastilla_20260925.rbf"
+echo "Maldita Castilla" > "$M/tmp/CORENAME"
+mrun() { env PATH="$T/bin:$PATH" MH_ROOT="$M" MH_DEVMEM=devmem MH_CPU_ISOLATE=0 MH_GATE_WINDOW=0 "$@" bash "$MG/launch.sh"; }
+MLOG="$MF/logs/MalditaCastilla/maldita.log"
+mrun & LPID=$!
+for _ in $(seq 1 100); do grep -q "fabric gate" "$MLOG" 2>/dev/null && break; sleep 0.1; done
+has "$MLOG" "gmloader -c gmloader.json cwd=$MF/games/gmloader blitter=0 ld=$MF/games/gmloader/mesa:$MF/games/gmloader" "maldita: cwd, env, test env overrides"
+has "$MLOG" "fabric gate: done" "maldita: gate sampled"
+echo MENU > "$M/tmp/CORENAME"
+for _ in $(seq 1 100); do kill -0 "$LPID" 2>/dev/null || break; sleep 0.1; done
+wait "$LPID" 2>/dev/null; LPID=""
+echo "Maldita Castilla" > "$M/tmp/CORENAME"
+rm -f "$MLOG"; mrun STUB_BRINGUP=SOFT-FAILED MH_MAX_RETRIES=0 & LPID=$!
+for _ in $(seq 1 100); do grep -q "fabric gate:" "$MLOG" 2>/dev/null && break; sleep 0.1; done
+has "$MLOG" "fabric gate: engine reports 'fabric bring-up SOFT-FAILED'" "maldita: fail pattern"
+echo MENU > "$M/tmp/CORENAME"
+for _ in $(seq 1 100); do kill -0 "$LPID" 2>/dev/null || break; sleep 0.1; done
+wait "$LPID" 2>/dev/null; LPID=""
+
+# --- a CONF_STR name with a space and a game dir that differs from the name -----
+S="$T/spaced"; SF="$S/media/fat"; mkdir -p "$S"
+cat > "$S/mister-port.toml" <<'EOS'
+[port]
+name     = "CursedCastilla"
+corename = "Cursed Castilla"
+gamedir  = "cursedcastilla"
+profile  = "gm-fabric"
+[launch]
+process       = "gmloader"
+command       = ["./gmloader", "-c", "gmloader.json"]
+ready_pattern = "fabric bring-up"
+fail_pattern  = "fabric bring-up SOFT-FAILED"
+EOS
+python3 "$PLAT/tools/mister_platform.py" render "$S/mister-port.toml" --out "$SF" >/dev/null && ok || bad "spaced: render failed"
+has "$SF/linux/hybrid.d/Cursed Castilla.conf" "^launcher=/media/fat/games/cursedcastilla/launch.sh$" "spaced: registry"
+has "$SF/linux/hybrid.d/Cursed Castilla.conf" "^noengine=/media/fat/games/cursedcastilla/NOENGINE$" "spaced: noengine"
+has "$SF/games/cursedcastilla/launch.sh" '^MH_CORENAME="Cursed Castilla"$' "spaced: quoted corename"
+has "$SF/games/cursedcastilla/launch.sh" '^MH_FAIL_PATTERN="fabric bring-up SOFT-FAILED"$' "spaced: fail pattern"
+has "$SF/Scripts/CursedCastilla.sh" '^MH_INI_SECTION="Cursed Castilla"$' "spaced: ini section"
+has "$SF/Scripts/CursedCastilla.sh" "\[c\]ursedcastilla/launch.sh" "spaced: launcher_running grep"
+[ -f "$SF/games/cursedcastilla/platform/launch_lib.sh" ] && ok || bad "spaced: platform/ under gamedir"
+[ -f "$SF/_Other/CursedCastilla.mgl" ] && ok || bad "spaced: mgl named after name"
+if command -v shellcheck >/dev/null; then
+    shellcheck -s bash "$SF/games/cursedcastilla/launch.sh" "$SF"/Scripts/*.sh && ok || bad "spaced: shellcheck"
+fi
+INI="$T/spaced.ini"; printf '[Cursed Castilla]\nmain=/media/fat/games/cursedcastilla/MiSTer_CursedCastilla\n' > "$INI"
+env MH_HOOK="$F/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$SF/linux/hybrid.d" \
+    MH_PLATFORM_DIR="$SF/games/cursedcastilla/platform" bash "$SF/Scripts/CursedCastilla_CoresMenu.sh" >/dev/null 2>&1 \
+    && ok || bad "spaced: toggle rc"
+has "$INI" "^main=$F/linux/MiSTer_hybrid$" "spaced: toggle replaced the legacy main="
+[ "$(grep -c '^\[Cursed Castilla\]$' "$INI")" = 1 ] && ok || bad "spaced: duplicated section"
+
 echo "render: $pass passed, $fail failed"
 [ "$fail" = 0 ]

@@ -29,15 +29,57 @@ device/main-hook/build-hps.sh          # -> build/main-hook/MiSTer_hybrid
 UPSTREAM_COMMIT=<sha> device/main-hook/build-hps.sh
 ```
 
-The build fails if the scheduler anchor is missing upstream, or if the hook strings are
-not linked in. `test/test_registry.c` is the host test for the registry parser; it runs
+The build fails if the scheduler or user_io anchors are missing upstream, or if the hook
+strings are not linked in. `test/test_registry.c` is the host test for the registry parser; it runs
 from `tests/run_all.sh`.
 
-## Not yet ported
+## OSD Reset restart (opt-in per core)
 
-Maldita's OSD "Reset" engine restart (`maldita_reset.*`). It also needs an upstream
-`user_io.cpp` edit to latch the trigger bit. Until it is ported, maldita and cursed keep
-their own wrapper builds; donut and cash.cow do not use the Reset restart.
+Ported from maldita's `maldita_reset.*`. A core opts in with a status bit in its registry
+entry; entries without `osd_reset=` never read the trigger latch and behave as before
+(Cash Cow, Donut).
+
+Manifest (`mister-port.toml`) and the registry lines it renders:
+
+```toml
+[launch]
+osd_reset = 19          # CONF_STR "TJ,Reset;" -> status bit 19 (letter J = 19)
+```
+
+```ini
+# linux/hybrid.d/<CORENAME>.conf
+osd_reset=19                                         # 0..31, else the entry is rejected
+reset_clear=/tmp/mister-hybrid/<name>.retry          # launch_lib fabric-retry mark
+reset_clear=/tmp/mister-hybrid/<name>.lock/pid       # launch_lib lock (file, then dir)
+reset_clear=/tmp/mister-hybrid/<name>.lock
+```
+
+Behaviour, when MiSTer_hybrid itself spawned the launcher and the entry has `osd_reset=`:
+
+1. `build-hps.sh` adds `user_io_status_trigger_take()` to upstream `user_io.cpp`: a sticky
+   latch of single-bit sets of the 32-bit (non-extended) status word, i.e. CONF_STR `T`/`R`
+   pulses, which are set and cleared inside one `HandleUI()` call. Anchored like the
+   scheduler edit; the build fails if an anchor is missing or matches twice.
+2. `hybrid_hook_poll()` drains the latch every scheduler iteration. A pulse on the bit:
+   SIGTERM to the launcher's process group (it `setsid`s, so the engine it runs as a job
+   gets it too) -> SIGKILL after 3 s -> after 2 s more, or as soon as the child is reaped:
+   remove the `reset_clear=` paths in order (unlink, or rmdir a directory) and respawn
+   `launcher=`. Presses during a restart are dropped, never queued. If the engine had
+   already exited, a press respawns directly. Stepped per iteration (`hybrid_reset.c`), so
+   the OSD never blocks. Nothing touches the FPGA; the RBF stays loaded.
+3. Log lines (`log=`, the port's launch.log): `OSD Reset armed on status bit N`,
+   `OSD Reset - restarting the engine (SIGTERM group PID)`,
+   `OSD Reset - respawning the launcher (restart #N)`.
+
+Host tests: `test/test_reset.c` (state machine), `test/test_registry.c` (parser).
+
+## Other registry/manifest keys for pre-platform installs
+
+For installs that predate the platform layout (maldita, cursed): `[port] corename` may
+contain spaces (`"Maldita Castilla"`; the registry file is `hybrid.d/Maldita Castilla.conf`),
+`[port] gamedir` (games/<gamedir> holds launch.sh, platform/ and the engine payload;
+default name), `[port] mgl` (`_Other/<mgl>.mgl`), and `[launch]` `fail_pattern`,
+`engine_log`, `test_env`. See `examples/maldita.castilla/mister-port.toml`.
 
 ## Replaces
 

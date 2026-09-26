@@ -3,3 +3,4 @@ launcher=@GAMEDIR@/launch.sh
 log=@LOGDIR@/launch.log
 noengine=@GAMEDIR@/NOENGINE
 profile=@PROFILE@
+@OSD_RESET_LINES@

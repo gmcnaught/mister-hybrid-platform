@@ -6,8 +6,8 @@
 
 `render` writes a tree that mirrors /media/fat, ready to merge into a release zip:
 
-    games/<name>/launch.sh                  thin launcher -> platform/launch_lib.sh
-    games/<name>/platform/                  launch_lib.sh, mem_wc_load.sh, ini_main.sh, profile .env,
+    games/<gamedir>/launch.sh               thin launcher -> platform/launch_lib.sh
+    games/<gamedir>/platform/                  launch_lib.sh, mem_wc_load.sh, ini_main.sh, profile .env,
                                             mister_mem_wc.env, mister_cores.tsv, mem_wc/*.ko
     linux/hybrid.d/<corename>.conf          MiSTer_hybrid registry entry
     linux/MiSTer_hybrid                     only with --hook-binary
@@ -19,7 +19,10 @@ Manifest (mister-port.toml):
     [port]
     name     = "CashCowDX"      # games/<name>, logs/<name>, Scripts/<name>.sh, RBF prefix
     title    = "Cash Cow DX"
-    corename = "CashCowDX"      # CONF_STR name (/tmp/CORENAME); default: name
+    corename = "CashCowDX"      # CONF_STR name (/tmp/CORENAME, MiSTer.ini section); may contain
+                                # spaces ("Maldita Castilla"), not at either end; default: name
+    gamedir  = "CashCowDX"      # games/<gamedir>: launcher + engine payload; default: name
+    mgl      = "CashCowDX"      # _Other/<mgl>.mgl, may contain spaces; default: name
     profile  = "gm-fabric"      # spec/profiles/<profile>.toml; must list corename
     engine   = "godot4"         # informational
 
@@ -27,10 +30,16 @@ Manifest (mister-port.toml):
     process       = "cashcowdx"               # engine process name (comm)
     command       = ["./cashcowdx", "--main-pack", "CashCowDX.pck"]
     ready_pattern = "fabric bring-up"         # optional
+    fail_pattern  = "fabric bring-up SOFT-FAILED"  # optional: engine reports a dead fabric;
+                                              # the gate reloads the core as for a wedge
     cpu_isolate   = true                      # default true
     mem_wc        = true                      # default true
     fabric_gate   = true                      # default: true when the profile has a fabric
     env           = { MISTER_JOY = "1", XDG_DATA_HOME = "$MH_GAMEDIR/data" }
+    engine_log    = "maldita.log"             # file in logs/<name>/; default <name lowercased>.log
+    test_env      = "$MH_GAMEDIR/bench.env"   # optional: sourced before and after the port env
+    osd_reset     = 19                        # optional: CONF_STR "T" status bit whose OSD pulse
+                                              # makes MiSTer_hybrid restart the launcher
 
     [scripts]
     required_files = [ ["CashCowDX.pck", "copy it from your GOG install (see README.md)"] ]
@@ -59,7 +68,11 @@ from mister_spec import load_all  # noqa: E402
 
 TEMPLATES = ROOT / "device" / "templates"
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,40}$")
+# CONF_STR core names may contain spaces (hybrid_registry.c accepts the same set).
+FILE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 ENV_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# CONF_STR names as MiSTer writes them to /tmp/CORENAME, e.g. "Cursed Castilla".
+CORENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.+-]{0,63}$")
 
 
 class ManifestError(Exception):
@@ -95,8 +108,21 @@ def load_manifest(path: Path) -> dict:
         raise ManifestError(f"[port] name {name!r}: letters, digits, _ only (it becomes paths and a CORENAME match)")
     port.setdefault("corename", name)
     port.setdefault("title", name)
-    if not NAME_RE.match(port["corename"]):
+    port.setdefault("gamedir", name)
+    if not CORENAME_RE.match(port["corename"]) or port["corename"].endswith(" "):
         raise ManifestError(f"[port] corename {port['corename']!r} is not a valid CONF_STR name")
+    if port["corename"] != port["corename"].strip():
+        raise ManifestError(f"[port] corename {port['corename']!r} is not a valid CONF_STR name")
+    if not NAME_RE.match(port["gamedir"]):
+        raise ManifestError(f"[port] gamedir {port['gamedir']!r}: letters, digits, _ only")
+    port.setdefault("mgl", name)
+    if not CORENAME_RE.match(port["mgl"]) or port["mgl"] != port["mgl"].strip():
+        raise ManifestError(f"[port] mgl {port['mgl']!r}: letters, digits, space, _ . - only")
+    if "engine_log" in launch and not FILE_RE.match(launch["engine_log"]):
+        raise ManifestError(f"[launch] engine_log {launch['engine_log']!r}: a file name, not a path")
+    bit = launch.get("osd_reset")
+    if bit is not None and (isinstance(bit, bool) or not isinstance(bit, int) or not 0 <= bit <= 31):
+        raise ManifestError(f"[launch] osd_reset {bit!r}: the CONF_STR T option's status bit, 0..31")
     if not re.match(r"^[A-Za-z0-9_.+-]+$", launch["process"]):
         raise ManifestError(f"[launch] process {launch['process']!r} is not a process name")
     if not isinstance(launch["command"], list) or not launch["command"]:
@@ -136,7 +162,8 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     port, launch, scripts = m["port"], m["launch"], m.get("scripts", {})
     prof = m["_profile"]
     name = port["name"]
-    gamedir = f"/media/fat/games/{name}"
+    gdir = port["gamedir"]
+    gamedir = f"/media/fat/games/{gdir}"
     logdir = f"/media/fat/logs/{name}"
     has_fabric = "fabric_ctrl" in prof.roles
     gate = launch.get("fabric_gate", has_fabric)
@@ -170,12 +197,28 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
             "\t\t[ -f \"$w\" ] && ! grep -q \"^main=$w\" \"$MH_INI_FILE\" 2>/dev/null && rm -f \"$w\" && echo \"launcher: removed $w\"\n"
             "\tdone\n"
             "fi\n")
+    # Optional launcher variables (launch_lib.sh defaults apply when absent).
+    opt = []
+    if "engine_log" in launch:
+        opt.append(f'MH_LOG="${{MH_ROOT:-}}{logdir}/{launch["engine_log"]}"')
+    if "test_env" in launch:
+        opt.append(f"MH_TEST_ENV={dq(launch['test_env'])}")
+    # OSD Reset: MiSTer_hybrid restarts the launcher on the T option's pulse, first
+    # clearing launch_lib's retry mark and lock (MH_STATE_DIR/<name>.*) so the fresh
+    # launcher neither inherits a spent retry budget nor stands down on the lock.
+    reset_lines = ""
+    if launch.get("osd_reset") is not None:
+        st = f"/tmp/mister-hybrid/{name}"
+        reset_lines = (f"osd_reset={launch['osd_reset']}\n"
+                       f"reset_clear={st}.retry\nreset_clear={st}.lock/pid\nreset_clear={st}.lock\n")
     values = {
         "NAME": name, "TITLE": port["title"], "CORENAME": port["corename"], "PROFILE": prof.name,
         "GAMEDIR": gamedir, "LOGDIR": logdir, "PROCESS": launch["process"],
-        "NAME_FIRST": name[0], "NAME_REST": name[1:],
+        "GDIR": gdir, "GDIR_FIRST": gdir[0], "GDIR_REST": gdir[1:],
+        "OPTIONAL_VARS": "\n".join(opt), "OSD_RESET_LINES": reset_lines,
         "COMMAND": " ".join(dq(str(a)) for a in launch["command"]),
         "READY_PATTERN": dq(launch.get("ready_pattern", "")),
+        "FAIL_PATTERN": dq(launch.get("fail_pattern", "")),
         "CPU_ISOLATE": "1" if launch.get("cpu_isolate", True) else "0",
         "MEM_WC": "1" if launch.get("mem_wc", True) else "0",
         "FABRIC_GATE_LINE": "" if gate else "MH_FABRIC_GATE=0",
@@ -192,13 +235,13 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         write(p, subst((TEMPLATES / template).read_text(), values), executable)
         written.append(p)
 
-    emit(f"games/{name}/launch.sh", "launch.sh.in", True)
+    emit(f"games/{gdir}/launch.sh", "launch.sh.in", True)
     emit(f"linux/hybrid.d/{port['corename']}.conf", "hybrid.conf.in")
     emit(f"Scripts/{name}.sh", "Scripts.sh.in", True)
     emit(f"Scripts/{name}_CoresMenu.sh", "CoresMenu.sh.in", True)
-    emit(f"_Other/{name}.mgl", "mgl.in")
+    emit(f"_Other/{port['mgl']}.mgl", "mgl.in")
 
-    plat = out / "games" / name / "platform"
+    plat = out / "games" / gdir / "platform"
     gen = ROOT / "spec" / "generated"
     for src in [ROOT / "device/sh/launch_lib.sh", ROOT / "device/sh/mem_wc_load.sh", ROOT / "device/sh/ini_main.sh",
                 gen / f"mister_map_{prof.name.replace('-', '_')}.env", gen / "mister_mem_wc.env",

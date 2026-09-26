@@ -45,6 +45,46 @@ int main(void)
     CHECK(strcmp(e.noengine, "/x/NOENGINE") == 0);
     CHECK(strcmp(e.profile, "gm-fabric") == 0);
 
+    CHECK(e.osd_reset_bit == -1);          /* no osd_reset=: Reset restart off */
+    CHECK(e.n_reset_clear == 0);
+
+    /* OSD Reset opt-in, and a CONF_STR core name with a space */
+    snprintf(conf, sizeof(conf),
+             "launcher=%s\nosd_reset=19\nreset_clear=/tmp/mh/X.retry\nreset_clear=/tmp/mh/X.lock/pid\nreset_clear=/tmp/mh/X.lock\n",
+             launcher);
+    put("Maldita Castilla.conf", conf, 0644);
+    CHECK(hybrid_registry_lookup(dir, "Maldita Castilla", &e, err, sizeof(err)) == HYBRID_OK);
+    CHECK(e.osd_reset_bit == 19);
+    CHECK(e.n_reset_clear == 3);
+    CHECK(strcmp(e.reset_clear[0], "/tmp/mh/X.retry") == 0);
+    CHECK(strcmp(e.reset_clear[2], "/tmp/mh/X.lock") == 0);
+    CHECK(hybrid_registry_lookup(dir, " Maldita Castilla", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);
+    CHECK(hybrid_registry_lookup(dir, "Maldita Castilla ", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);
+
+    const char *bad_bits[] = { "32", "-1", "x", "", "19x", "+3" };
+    for (size_t i = 0; i < sizeof(bad_bits) / sizeof(bad_bits[0]); i++) {
+        snprintf(conf, sizeof(conf), "launcher=%s\nosd_reset=%s\n", launcher, bad_bits[i]);
+        put("BadBit.conf", conf, 0644);
+        CHECK(hybrid_registry_lookup(dir, "BadBit", &e, err, sizeof(err)) == HYBRID_BAD_ENTRY);
+    }
+    snprintf(conf, sizeof(conf), "launcher=%s\nosd_reset=0\n", launcher);
+    put("Bit0.conf", conf, 0644);
+    CHECK(hybrid_registry_lookup(dir, "Bit0", &e, err, sizeof(err)) == HYBRID_OK && e.osd_reset_bit == 0);
+    snprintf(conf, sizeof(conf), "launcher=%s\nreset_clear=tmp/relative\n", launcher);
+    put("RelClear.conf", conf, 0644);
+    CHECK(hybrid_registry_lookup(dir, "RelClear", &e, err, sizeof(err)) == HYBRID_BAD_ENTRY);
+    snprintf(conf, sizeof(conf), "launcher=%s\nreset_clear=/a\nreset_clear=/b\nreset_clear=/c\nreset_clear=/d\nreset_clear=/e\n", launcher);
+    put("ManyClear.conf", conf, 0644);
+    CHECK(hybrid_registry_lookup(dir, "ManyClear", &e, err, sizeof(err)) == HYBRID_BAD_ENTRY);
+
+    /* CONF_STR names may contain spaces ("Cursed Castilla"). */
+    snprintf(conf, sizeof(conf), "launcher=%s\n", launcher);
+    put("Cursed Castilla.conf", conf, 0644);
+    CHECK(hybrid_registry_lookup(dir, "Cursed Castilla", &e, err, sizeof(err)) == HYBRID_OK);
+    CHECK(strcmp(e.launcher, launcher) == 0);
+    CHECK(hybrid_registry_lookup(dir, " Cursed", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);
+    CHECK(hybrid_registry_lookup(dir, "a/b", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);
+
     CHECK(hybrid_registry_lookup(dir, "SNES", &e, err, sizeof(err)) == HYBRID_NO_ENTRY);
     CHECK(hybrid_registry_lookup(dir, "../etc/passwd", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);
     CHECK(hybrid_registry_lookup(dir, "", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);

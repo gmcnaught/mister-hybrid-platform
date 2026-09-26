@@ -196,5 +196,21 @@ launch; finish; rc=$?
 has "$LOG" "engine exited during start-up" "early exit logged"
 [ ! -d "$R/tmp/mister-hybrid/CashCowDX.lock" ] && ok || bad "early exit: lock not released"
 
+# 9. engine logs MH_FAIL_PATTERN -> reload even though C_DONE advances
+fresh CashCowDX
+: > "$R/devmem/advance"
+sed -i.bak 's/^MH_READY_PATTERN=/MH_FAIL_PATTERN="bring-up SOFT-FAILED" MH_READY_PATTERN=/' "$G/launch.sh"
+sed -i.bak 's/fabric bring-up ok/fabric bring-up SOFT-FAILED/' "$G/engine"
+mkfifo "$R/dev/MiSTer_cmd"
+( exec 3<>"$R/dev/MiSTer_cmd"
+  read -r l1 <&3; echo "$l1" >> "$R/cmd.log"; echo MENU > "$R/tmp/CORENAME"
+  read -r l2 <&3; echo "$l2" >> "$R/cmd.log" ) &
+BG+=("$!")
+launch; finish; rc=$?
+[ $rc = 1 ] && ok || bad "soft-fail rc=$rc"
+has "$LOG" "engine reports 'bring-up SOFT-FAILED'" "soft-fail: logged"
+has "$LOG" "fabric gate: WEDGED -- reloading the core, attempt 1/4" "soft-fail: reload"
+hasnt "$LOG" "fabric gate: done" "soft-fail: C_DONE sample skipped"
+
 echo "launch_lib: $pass passed, $fail failed"
 [ "$fail" = 0 ]

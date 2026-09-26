@@ -8,15 +8,17 @@
 # -- is platform/launch_lib.sh (mister-hybrid-platform @PLATFORM_VERSION@).
 # shellcheck disable=SC2034  # MH_* are read by launch_lib.sh
 MH_NAME=@NAME@
-MH_CORENAME=@CORENAME@
+MH_CORENAME="@CORENAME@"
 MH_PROFILE=@PROFILE@
 MH_GAMEDIR="${MH_ROOT:-}@GAMEDIR@"
 MH_ENGINE=@PROCESS@
 MH_ENGINE_CMD=(@COMMAND@)
 MH_READY_PATTERN=@READY_PATTERN@
+MH_FAIL_PATTERN=@FAIL_PATTERN@
 MH_CPU_ISOLATE=@CPU_ISOLATE@
 MH_MEM_WC=@MEM_WC@
 @FABRIC_GATE_LINE@
+@OPTIONAL_VARS@
 
 # Engine environment. Called by mh_main after the profile map is loaded, so
 # values may use $MISTER_<PROFILE>_* and $MH_* variables.

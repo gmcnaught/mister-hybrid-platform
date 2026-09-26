@@ -31,7 +31,7 @@ typedef struct {
     uint32_t role[MISTER_ROLE__COUNT]; /* physical address, 0 = absent */
 } mister_profile_t;
 
-static const char *const mister_cores_gm_fabric[] = { "MalditaCastilla", "CursedCastilla", "DonutDodo", "CashCowDX", 0 };
+static const char *const mister_cores_gm_fabric[] = { "Maldita Castilla", "Cursed Castilla", "DonutDodo", "CashCowDX", 0 };
 static const char *const mister_cores_openbor_classic[] = { "OpenBOR", 0 };
 static const char *const mister_cores_solarus_fabric[] = { "Solarus", 0 };
 
