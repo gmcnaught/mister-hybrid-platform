@@ -1,5 +1,6 @@
 # gm-fabric — the maldita.castilla-mister core (also shipped, same RTL, as the
 # Cursed Castilla, Donut Dodo and Cash Cow DX RBFs via core_variant).
+# cores are CONF_STR names exactly as /tmp/CORENAME has them, spaces included.
 #
 # Differences from openbor-classic that bite:
 #  * The framebuffer/control/joystick block is RELOCATED to 0x3BF40000

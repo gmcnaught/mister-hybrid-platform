@@ -63,18 +63,17 @@ class Manifest(unittest.TestCase):
 
     def test_corename_with_space(self):
         m = mp.load_manifest(manifest(name="MalditaCastilla", extra_port='corename = "Maldita Castilla"'))
-        self.assertEqual(m["port"]["gamedir"], "/media/fat/games/MalditaCastilla")
+        self.assertEqual(m["port"]["gamedir"], "MalditaCastilla")
         for bad in (" Maldita Castilla", "Maldita Castilla ", "Maldita/Castilla", "Maldita;C"):
             with self.assertRaisesRegex(mp.ManifestError, "CONF_STR name"):
                 mp.load_manifest(manifest(name="MalditaCastilla", extra_port=f'corename = "{bad}"'))
 
-    def test_gamedir_workdir(self):
-        m = mp.load_manifest(manifest(extra_port='gamedir = "/media/fat/games/Cash Cow"',
-                                      extra_launch='workdir = "/media/fat/games/gmloader"'))
-        self.assertEqual(m["launch"]["workdir"], "/media/fat/games/gmloader")
-        self.assertEqual(mp.load_manifest(manifest())["launch"]["workdir"], "/media/fat/games/CashCowDX")
-        for bad in ("games/x", "/tmp/x", "/media/fat/games/../etc", "/media/fat/games/a;b"):
-            with self.assertRaisesRegex(mp.ManifestError, "absolute /media/fat directory"):
+    def test_gamedir(self):
+        m = mp.load_manifest(manifest(extra_port='gamedir = "gmloader"'))
+        self.assertEqual(m["port"]["gamedir"], "gmloader")
+        self.assertEqual(mp.load_manifest(manifest())["port"]["gamedir"], "CashCowDX")
+        for bad in ("games/x", "Maldita Castilla", "..", "a;b"):
+            with self.assertRaisesRegex(mp.ManifestError, "gamedir"):
                 mp.load_manifest(manifest(extra_port=f'gamedir = "{bad}"'))
 
     def test_osd_reset(self):

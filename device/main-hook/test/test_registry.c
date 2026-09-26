@@ -77,6 +77,14 @@ int main(void)
     put("ManyClear.conf", conf, 0644);
     CHECK(hybrid_registry_lookup(dir, "ManyClear", &e, err, sizeof(err)) == HYBRID_BAD_ENTRY);
 
+    /* CONF_STR names may contain spaces ("Cursed Castilla"). */
+    snprintf(conf, sizeof(conf), "launcher=%s\n", launcher);
+    put("Cursed Castilla.conf", conf, 0644);
+    CHECK(hybrid_registry_lookup(dir, "Cursed Castilla", &e, err, sizeof(err)) == HYBRID_OK);
+    CHECK(strcmp(e.launcher, launcher) == 0);
+    CHECK(hybrid_registry_lookup(dir, " Cursed", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);
+    CHECK(hybrid_registry_lookup(dir, "a/b", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);
+
     CHECK(hybrid_registry_lookup(dir, "SNES", &e, err, sizeof(err)) == HYBRID_NO_ENTRY);
     CHECK(hybrid_registry_lookup(dir, "../etc/passwd", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);
     CHECK(hybrid_registry_lookup(dir, "", &e, err, sizeof(err)) == HYBRID_BAD_CORENAME);

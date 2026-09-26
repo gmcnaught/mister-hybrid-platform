@@ -20,14 +20,13 @@
 #                           and before the engine starts: export the engine env here
 # Optional (default):
 #   MH_LOGDIR (/media/fat/logs/$MH_NAME)   MH_PLATFORM_DIR ($MH_GAMEDIR/platform)
-#   MH_WORKDIR ($MH_GAMEDIR)  the engine's working directory (maldita: games/gmloader)
 #   MH_LOG ($MH_LOGDIR/<name lowercased>.log)  the engine log
-#   MH_FAIL_PATTERN ("")   line in the engine log meaning "fabric bring-up failed":
-#                          the fabric gate treats it as wedged without sampling
 #   MH_RBF_GLOB (/media/fat/_Other/${MH_NAME}_*.rbf)
 #   MH_MEM_WC (1)  MH_CPU_ISOLATE (1)  MH_FABRIC_GATE (1 if the profile has a fabric)
 #   MH_READY_PATTERN ("")  line in the engine log meaning "fabric is up"; empty =
 #                          wait MH_READY_TIMEOUT seconds unless the engine exits
+#   MH_FAIL_PATTERN ("")   line in the engine log meaning "fabric bring-up failed";
+#                          the fabric gate then reloads the core as for a wedge
 #   MH_READY_TIMEOUT (60)  MH_GATE_WINDOW (8)  MH_MAX_RETRIES (4)
 #   MH_ENGINE_CPU (2)      taskset mask the engine starts on (it pins its own main thread)
 #   MH_TEST_ENV (/tmp/<name>_test.env)  sourced if present -- measurement hook; sourced
@@ -56,12 +55,11 @@ mh_defaults() {
     : "${MH_NAME:?}" "${MH_CORENAME:?}" "${MH_PROFILE:?}" "${MH_GAMEDIR:?}" "${MH_ENGINE:?}"
     MH_LOGDIR=${MH_LOGDIR:-$MH_ROOT/media/fat/logs/$MH_NAME}
     MH_PLATFORM_DIR=${MH_PLATFORM_DIR:-$MH_GAMEDIR/platform}
-    MH_WORKDIR=${MH_WORKDIR:-$MH_GAMEDIR}
-    MH_FAIL_PATTERN=${MH_FAIL_PATTERN:-}
     MH_RBF_GLOB=${MH_RBF_GLOB:-$MH_ROOT/media/fat/_Other/${MH_NAME}_*.rbf}
     MH_MEM_WC=${MH_MEM_WC:-1}
     MH_CPU_ISOLATE=${MH_CPU_ISOLATE:-1}
     MH_READY_PATTERN=${MH_READY_PATTERN:-}
+    MH_FAIL_PATTERN=${MH_FAIL_PATTERN:-}
     MH_READY_TIMEOUT=${MH_READY_TIMEOUT:-60}
     MH_GATE_WINDOW=${MH_GATE_WINDOW:-8}
     MH_MAX_RETRIES=${MH_MAX_RETRIES:-4}
@@ -254,11 +252,16 @@ mh_stop_engine() {
     MH_ENGINE_PID=""
 }
 
-# Wait for the ready line (or the timeout); fail if the engine dies first.
+# Wait for the ready line (or the timeout). 1: the engine died first;
+# 2: the engine logged MH_FAIL_PATTERN (its fabric bring-up failed).
 mh_wait_ready() {
     local waited=0
     while [ $waited -lt "$MH_READY_TIMEOUT" ]; do
         kill -0 "$MH_ENGINE_PID" 2>/dev/null || { mh_log "engine exited during start-up"; return 1; }
+        if [ -n "$MH_FAIL_PATTERN" ] && grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null; then
+            mh_log "fabric gate: engine reports '$MH_FAIL_PATTERN'"
+            return 2
+        fi
         if [ -n "$MH_READY_PATTERN" ] && grep -q "$MH_READY_PATTERN" "$MH_LOG" 2>/dev/null; then return 0; fi
         [ -z "$MH_READY_PATTERN" ] && [ $waited -ge 2 ] && return 0
         mh_nap 1; waited=$((waited + 1))
@@ -270,10 +273,6 @@ mh_wait_ready() {
 # Blitter still retiring work? (C_DONE advances, or nothing is outstanding)
 mh_fabric_ok() {
     local d0 d1 s1
-    if [ -n "$MH_FAIL_PATTERN" ] && grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null; then
-        mh_log "fabric gate: engine reports '$MH_FAIL_PATTERN'"
-        return 1
-    fi
     d0=$(mh_devmem "$MH_C_DONE"); mh_nap "$MH_GATE_WINDOW"
     d1=$(mh_devmem "$MH_C_DONE"); s1=$(mh_devmem "$MH_C_SUBMIT")
     mh_log "fabric gate: done $d0 -> $d1 (submit $s1)"
@@ -334,7 +333,7 @@ mh_main() {
     mkdir -p "$MH_LOGDIR"
     # shellcheck disable=SC1090
     [ -f "$MH_TEST_ENV" ] && . "$MH_TEST_ENV"
-    cd "$MH_WORKDIR" || exit 1
+    cd "$MH_GAMEDIR" || exit 1
     local rc
     mh_check_core >> "$MH_LOGDIR/launch.log"; rc=$?
     if [ $rc -ne 0 ]; then
@@ -363,9 +362,11 @@ mh_main() {
     # shellcheck disable=SC1090
     [ -f "$MH_TEST_ENV" ] && . "$MH_TEST_ENV"
     mh_start_engine
-    mh_wait_ready || exit 1
+    local ready=0
+    mh_wait_ready || ready=$?
+    [ "$ready" = 1 ] && exit 1
     mh_cpu_isolate
-    if [ "$MH_FABRIC_GATE" = 1 ] && ! mh_fabric_ok; then
+    if [ "$MH_FABRIC_GATE" = 1 ] && { [ "$ready" = 2 ] || ! mh_fabric_ok; }; then
         if [ "$attempt" -lt "$MH_MAX_RETRIES" ]; then
             echo $((attempt + 1)) > "$MH_RETRY_MARK"
             mh_log "fabric gate: WEDGED -- reloading the core, attempt $((attempt + 1))/$MH_MAX_RETRIES"

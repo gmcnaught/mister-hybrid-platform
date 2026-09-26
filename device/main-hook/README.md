@@ -77,9 +77,9 @@ Host tests: `test/test_reset.c` (state machine), `test/test_registry.c` (parser)
 
 For installs that predate the platform layout (maldita, cursed): `[port] corename` may
 contain spaces (`"Maldita Castilla"`; the registry file is `hybrid.d/Maldita Castilla.conf`),
-`[port] gamedir` (launch.sh + platform/, default `/media/fat/games/<name>`), `[port] mgl`
-(`_Other/<mgl>.mgl`), `[launch] workdir` (engine cwd, `required_files`, `NOENGINE`),
-`engine_log`, `fail_pattern`, `test_env`. See `examples/maldita.castilla/mister-port.toml`.
+`[port] gamedir` (games/<gamedir> holds launch.sh, platform/ and the engine payload;
+default name), `[port] mgl` (`_Other/<mgl>.mgl`), and `[launch]` `fail_pattern`,
+`engine_log`, `test_env`. See `examples/maldita.castilla/mister-port.toml`.
 
 ## Replaces
 
