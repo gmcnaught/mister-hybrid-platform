@@ -240,6 +240,7 @@ finish; rc=$?
 [ $rc = 0 ] && ok || bad "select: rc=$rc after core change"
 [ ! -e "$R/tmp/mister-hybrid/engine.claim" ] && ok || bad "select: claim not released"
 [ ! -d "$R/tmp/mister-hybrid/CashCowDX.lock" ] && ok || bad "select: lock not released"
+[ -z "$(ls -A "$R/tmp/mister-hybrid" 2>/dev/null)" ] && ok || bad "select: $R/tmp/mister-hybrid not empty: $(ls -A "$R/tmp/mister-hybrid")"
 [ "$(cat "$R/proc/irq/45/smp_affinity")" = 3 ] && ok || bad "select: USB IRQ not restored"
 
 # 10. select: another core while idle -> exit 0 without starting anything
@@ -251,6 +252,7 @@ finish; rc=$?
 [ $rc = 0 ] && ok || bad "select idle: rc=$rc"
 has "$LOG" "select: core changed to 'MENU' -- exiting" "select idle: exit logged"
 hasnt "$LOG" "engine args" "select idle: engine started"
+[ -z "$(ls -A "$R/tmp/mister-hybrid" 2>/dev/null)" ] && ok || bad "select idle: state dir not empty"
 
 echo "launch_lib: $pass passed, $fail failed"
 [ "$fail" = 0 ]

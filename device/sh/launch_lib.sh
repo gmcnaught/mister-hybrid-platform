@@ -369,6 +369,7 @@ mh_cleanup() {
     fi
     mh_cpu_restore &
     rm -rf "$MH_LOCKDIR"
+    [ -n "${MH_SELECT_REF:-}" ] && rm -f "$MH_SELECT_REF"
     wait
 }
 
