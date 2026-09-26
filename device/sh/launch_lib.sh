@@ -266,11 +266,16 @@ mh_wait_ready() {
         # Another core already: skip ahead; the gate is skipped and the watchdog stops the engine.
         cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
         [ "$cur" = "$MH_CORENAME" ] || return 0
+        # The fail line may also match the ready pattern ("fabric bring-up
+        # SOFT-FAILED" vs "fabric bring-up"), and it can land between two greps:
+        # check the fail pattern again once the ready line is seen.
+        if [ -n "$MH_READY_PATTERN" ] && grep -q "$MH_READY_PATTERN" "$MH_LOG" 2>/dev/null; then
+            [ -z "$MH_FAIL_PATTERN" ] || ! grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null && return 0
+        fi
         if [ -n "$MH_FAIL_PATTERN" ] && grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null; then
             mh_log "fabric gate: engine reports '$MH_FAIL_PATTERN'"
             return 2
         fi
-        if [ -n "$MH_READY_PATTERN" ] && grep -q "$MH_READY_PATTERN" "$MH_LOG" 2>/dev/null; then return 0; fi
         [ -z "$MH_READY_PATTERN" ] && [ $waited -ge 2 ] && return 0
         mh_nap 1; waited=$((waited + 1))
     done
