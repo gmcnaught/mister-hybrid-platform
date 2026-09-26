@@ -32,6 +32,10 @@ class Manifest(unittest.TestCase):
         m = mp.load_manifest(ROOT / "examples/cash.cow.dx/mister-port.toml")
         self.assertEqual(m["_profile"].name, "gm-fabric")
 
+    def test_donut_example_validates(self):
+        m = mp.load_manifest(ROOT / "examples/donut.dodo/mister-port.toml")
+        self.assertEqual(m["launch"]["stall_timeout"], 6)
+
     def test_minimal(self):
         m = mp.load_manifest(manifest())
         self.assertEqual(m["port"]["corename"], "CashCowDX")
@@ -60,6 +64,27 @@ class Manifest(unittest.TestCase):
         m = mp.load_manifest(manifest(name="OpenBOR", profile="openbor-classic", extra_launch="fabric_gate = true"))
         with self.assertRaisesRegex(mp.ManifestError, "has no fabric"):
             mp.render(m, Path(tempfile.mkdtemp()), None)
+
+    def test_engine_cpus_range(self):
+        with self.assertRaisesRegex(mp.ManifestError, "engine_cpus"):
+            mp.load_manifest(manifest(extra_launch="engine_cpus = 4"))
+        with self.assertRaisesRegex(mp.ManifestError, "stall_timeout"):
+            mp.load_manifest(manifest(extra_launch='stall_timeout = "6"'))
+
+    def test_stall_timeout_needs_fabric(self):
+        m = mp.load_manifest(manifest(extra_launch="fabric_gate = false\nstall_timeout = 6"))
+        with self.assertRaisesRegex(mp.ManifestError, "stall_timeout needs the fabric gate"):
+            mp.render(m, Path(tempfile.mkdtemp()), None)
+
+    def test_optional_lines(self):
+        out = Path(tempfile.mkdtemp())
+        mp.render(mp.load_manifest(manifest(extra_launch="engine_cpus = 3\nstall_timeout = 6")), out, None)
+        text = (out / "games/CashCowDX/launch.sh").read_text()
+        self.assertIn("MH_ENGINE_CPU=${MH_ENGINE_CPU:-3}", text)
+        self.assertIn("MH_STALL_S=${MH_STALL_S:-6}", text)
+        out = Path(tempfile.mkdtemp())
+        mp.render(mp.load_manifest(manifest()), out, None)
+        self.assertNotIn("MH_STALL_S", (out / "games/CashCowDX/launch.sh").read_text())
 
     def test_quoting(self):
         self.assertEqual(mp.dq('a "b" `c` \\d $E'), '"a \\"b\\" \\`c\\` \\\\d $E"')

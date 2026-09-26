@@ -28,6 +28,11 @@ Manifest (mister-port.toml):
     command       = ["./cashcowdx", "--main-pack", "CashCowDX.pck"]
     ready_pattern = "fabric bring-up"         # optional
     cpu_isolate   = true                      # default true
+    engine_cpus   = 2                         # taskset mask the engine starts on; default 2
+                                              # (CPU1: the engine pins its own main thread to CPU0).
+                                              # 3 for an engine that does not pin, with cpu_isolate = false
+    stall_timeout = 6                         # optional: reload the core when the fabric stays
+                                              # wedged this many seconds mid-game (0/absent = off)
     mem_wc        = true                      # default true
     fabric_gate   = true                      # default: true when the profile has a fabric
     env           = { MISTER_JOY = "1", XDG_DATA_HOME = "$MH_GAMEDIR/data" }
@@ -101,6 +106,10 @@ def load_manifest(path: Path) -> dict:
         raise ManifestError(f"[launch] process {launch['process']!r} is not a process name")
     if not isinstance(launch["command"], list) or not launch["command"]:
         raise ManifestError("[launch] command must be a non-empty list")
+    for key, lo, hi in (("engine_cpus", 1, 3), ("stall_timeout", 0, 600)):
+        v = launch.get(key)
+        if v is not None and (not isinstance(v, int) or isinstance(v, bool) or not lo <= v <= hi):
+            raise ManifestError(f"[launch] {key} = {v!r}: expected an integer {lo}..{hi}")
     for k in launch.get("env", {}):
         if not ENV_RE.match(k):
             raise ManifestError(f"[launch] env key {k!r} is not a shell variable name")
@@ -142,6 +151,11 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     gate = launch.get("fabric_gate", has_fabric)
     if gate and not has_fabric:
         raise ManifestError(f"fabric_gate = true but profile {prof.name} has no fabric")
+    if launch.get("stall_timeout", 0) and not gate:
+        raise ManifestError("stall_timeout needs the fabric gate (a profile with a fabric, fabric_gate not false)")
+    # Optional launcher settings: ${VAR:-value}, so the environment can still override them.
+    opt_lines = [f"MH_{var}=${{MH_{var}:-{launch[key]}}}"
+                 for key, var in (("engine_cpus", "ENGINE_CPU"), ("stall_timeout", "STALL_S")) if key in launch]
 
     env_lines = [f"    export {k}={dq(str(v))}" for k, v in launch.get("env", {}).items()]
     req = []
@@ -179,6 +193,7 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         "CPU_ISOLATE": "1" if launch.get("cpu_isolate", True) else "0",
         "MEM_WC": "1" if launch.get("mem_wc", True) else "0",
         "FABRIC_GATE_LINE": "" if gate else "MH_FABRIC_GATE=0",
+        "OPTIONAL_LINES": "\n".join(opt_lines),
         "ENV_EXPORTS": "\n".join(env_lines),
         "REQUIRED_FILES": "\n".join(req),
         "SCRIPTS_EXTRA": extra,

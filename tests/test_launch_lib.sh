@@ -196,5 +196,37 @@ launch; finish; rc=$?
 has "$LOG" "engine exited during start-up" "early exit logged"
 [ ! -d "$R/tmp/mister-hybrid/CashCowDX.lock" ] && ok || bad "early exit: lock not released"
 
+# 9. fabric wedges mid-game (MH_STALL_S) -> watchdog reloads the core, retry mark 1
+fresh CashCowDX
+: > "$R/devmem/advance"
+echo "main=/media/fat/linux/MiSTer_hybrid" > "$R/media/fat/MiSTer.ini"
+mkfifo "$R/dev/MiSTer_cmd"
+( exec 3<>"$R/dev/MiSTer_cmd"
+  read -r l1 <&3; echo "$l1" >> "$R/cmd.log"; echo MENU > "$R/tmp/CORENAME"
+  read -r l2 <&3; echo "$l2" >> "$R/cmd.log"; echo CashCowDX > "$R/tmp/CORENAME" ) &
+BG+=("$!")
+launch MH_STALL_S=2
+wait_for "$LOG" "fabric gate: done" 15 || bad "stall: gate never ran"
+rm -f "$R/devmem/advance"; echo 0x7FFFFFFF > "$R/devmem/0x3B000000"   # C_DONE frozen behind C_SUBMIT
+finish; rc=$?
+[ $rc = 1 ] && ok || bad "stall rc=$rc"
+has "$LOG" "watchdog: fabric WEDGED" "stall: logged"
+has "$LOG" "engine got TERM" "stall: engine stopped"
+[ "$(cat "$R/tmp/mister-hybrid/CashCowDX.retry" 2>/dev/null)" = 1 ] && ok || bad "stall: retry mark not 1"
+wait_for "$R/cmd.log" "load_core $R/media/fat/_Other/CashCowDX_20260924.rbf" 5 || bad "stall: core not reloaded"
+[ ! -e "$R/tmp/mister-hybrid/engine.claim" ] && ok || bad "stall: claim not released"
+[ ! -d "$R/tmp/mister-hybrid/CashCowDX.lock" ] && ok || bad "stall: lock not released"
+
+# 10. MH_STALL_S unset (default 0): a frozen C_DONE mid-game is left alone
+fresh CashCowDX
+: > "$R/devmem/advance"
+launch
+wait_for "$LOG" "fabric gate: done" 15 || bad "no-stall: gate never ran"
+rm -f "$R/devmem/advance"; echo 0x7FFFFFFF > "$R/devmem/0x3B000000"
+sleep 3
+kill -0 "$LPID" 2>/dev/null && ok || bad "no-stall: launcher exited"
+grep -q "fabric WEDGED" "$LOG" && bad "no-stall: watchdog reloaded" || ok
+echo MENU > "$R/tmp/CORENAME"; finish
+
 echo "launch_lib: $pass passed, $fail failed"
 [ "$fail" = 0 ]
