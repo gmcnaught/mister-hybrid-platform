@@ -24,6 +24,8 @@
 #   MH_MEM_WC (1)  MH_CPU_ISOLATE (1)  MH_FABRIC_GATE (1 if the profile has a fabric)
 #   MH_READY_PATTERN ("")  line in the engine log meaning "fabric is up"; empty =
 #                          wait MH_READY_TIMEOUT seconds unless the engine exits
+#   MH_FAIL_PATTERN ("")   line in the engine log meaning "fabric bring-up failed";
+#                          the fabric gate then reloads the core as for a wedge
 #   MH_READY_TIMEOUT (60)  MH_GATE_WINDOW (8)  MH_MAX_RETRIES (4)
 #   MH_ENGINE_CPU (2)      taskset mask the engine starts on (it pins its own main thread)
 #   MH_TEST_ENV (/tmp/<name>_test.env)  sourced if present -- measurement hook
@@ -55,6 +57,7 @@ mh_defaults() {
     MH_MEM_WC=${MH_MEM_WC:-1}
     MH_CPU_ISOLATE=${MH_CPU_ISOLATE:-1}
     MH_READY_PATTERN=${MH_READY_PATTERN:-}
+    MH_FAIL_PATTERN=${MH_FAIL_PATTERN:-}
     MH_READY_TIMEOUT=${MH_READY_TIMEOUT:-60}
     MH_GATE_WINDOW=${MH_GATE_WINDOW:-8}
     MH_MAX_RETRIES=${MH_MAX_RETRIES:-4}
@@ -247,11 +250,16 @@ mh_stop_engine() {
     MH_ENGINE_PID=""
 }
 
-# Wait for the ready line (or the timeout); fail if the engine dies first.
+# Wait for the ready line (or the timeout). 1: the engine died first;
+# 2: the engine logged MH_FAIL_PATTERN (its fabric bring-up failed).
 mh_wait_ready() {
     local waited=0
     while [ $waited -lt "$MH_READY_TIMEOUT" ]; do
         kill -0 "$MH_ENGINE_PID" 2>/dev/null || { mh_log "engine exited during start-up"; return 1; }
+        if [ -n "$MH_FAIL_PATTERN" ] && grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null; then
+            mh_log "fabric gate: engine reports '$MH_FAIL_PATTERN'"
+            return 2
+        fi
         if [ -n "$MH_READY_PATTERN" ] && grep -q "$MH_READY_PATTERN" "$MH_LOG" 2>/dev/null; then return 0; fi
         [ -z "$MH_READY_PATTERN" ] && [ $waited -ge 2 ] && return 0
         mh_nap 1; waited=$((waited + 1))
@@ -350,9 +358,11 @@ mh_main() {
     # The port's engine environment (rendered launch.sh), after the profile map.
     if declare -F mh_port_env >/dev/null; then mh_port_env; fi
     mh_start_engine
-    mh_wait_ready || exit 1
+    local ready=0
+    mh_wait_ready || ready=$?
+    [ "$ready" = 1 ] && exit 1
     mh_cpu_isolate
-    if [ "$MH_FABRIC_GATE" = 1 ] && ! mh_fabric_ok; then
+    if [ "$MH_FABRIC_GATE" = 1 ] && { [ "$ready" = 2 ] || ! mh_fabric_ok; }; then
         if [ "$attempt" -lt "$MH_MAX_RETRIES" ]; then
             echo $((attempt + 1)) > "$MH_RETRY_MARK"
             mh_log "fabric gate: WEDGED -- reloading the core, attempt $((attempt + 1))/$MH_MAX_RETRIES"

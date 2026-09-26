@@ -93,5 +93,38 @@ has "$LOG" "watchdog: core changed" "rendered: watchdog"
 # The stub engine exits 0 on TERM; before the saved-pid fix this read "exited (1)" (wait "").
 has "$LOG" "engine: exited (0)" "rendered: engine exit status"
 
+# --- a CONF_STR name with a space and a game dir that differs from the name -----
+S="$T/spaced"; SF="$S/media/fat"; mkdir -p "$S"
+cat > "$S/mister-port.toml" <<'EOS'
+[port]
+name     = "CursedCastilla"
+corename = "Cursed Castilla"
+gamedir  = "cursedcastilla"
+profile  = "gm-fabric"
+[launch]
+process       = "gmloader"
+command       = ["./gmloader", "-c", "gmloader.json"]
+ready_pattern = "fabric bring-up"
+fail_pattern  = "fabric bring-up SOFT-FAILED"
+EOS
+python3 "$PLAT/tools/mister_platform.py" render "$S/mister-port.toml" --out "$SF" >/dev/null && ok || bad "spaced: render failed"
+has "$SF/linux/hybrid.d/Cursed Castilla.conf" "^launcher=/media/fat/games/cursedcastilla/launch.sh$" "spaced: registry"
+has "$SF/linux/hybrid.d/Cursed Castilla.conf" "^noengine=/media/fat/games/cursedcastilla/NOENGINE$" "spaced: noengine"
+has "$SF/games/cursedcastilla/launch.sh" '^MH_CORENAME="Cursed Castilla"$' "spaced: quoted corename"
+has "$SF/games/cursedcastilla/launch.sh" '^MH_FAIL_PATTERN="fabric bring-up SOFT-FAILED"$' "spaced: fail pattern"
+has "$SF/Scripts/CursedCastilla.sh" '^MH_INI_SECTION="Cursed Castilla"$' "spaced: ini section"
+has "$SF/Scripts/CursedCastilla.sh" "\[c\]ursedcastilla/launch.sh" "spaced: launcher_running grep"
+[ -f "$SF/games/cursedcastilla/platform/launch_lib.sh" ] && ok || bad "spaced: platform/ under gamedir"
+[ -f "$SF/_Other/CursedCastilla.mgl" ] && ok || bad "spaced: mgl named after name"
+if command -v shellcheck >/dev/null; then
+    shellcheck -s bash "$SF/games/cursedcastilla/launch.sh" "$SF"/Scripts/*.sh && ok || bad "spaced: shellcheck"
+fi
+INI="$T/spaced.ini"; printf '[Cursed Castilla]\nmain=/media/fat/games/cursedcastilla/MiSTer_CursedCastilla\n' > "$INI"
+env MH_HOOK="$F/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$SF/linux/hybrid.d" \
+    MH_PLATFORM_DIR="$SF/games/cursedcastilla/platform" bash "$SF/Scripts/CursedCastilla_CoresMenu.sh" >/dev/null 2>&1 \
+    && ok || bad "spaced: toggle rc"
+has "$INI" "^main=$F/linux/MiSTer_hybrid$" "spaced: toggle replaced the legacy main="
+[ "$(grep -c '^\[Cursed Castilla\]$' "$INI")" = 1 ] && ok || bad "spaced: duplicated section"
+
 echo "render: $pass passed, $fail failed"
 [ "$fail" = 0 ]

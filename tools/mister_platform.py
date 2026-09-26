@@ -6,8 +6,8 @@
 
 `render` writes a tree that mirrors /media/fat, ready to merge into a release zip:
 
-    games/<name>/launch.sh                  thin launcher -> platform/launch_lib.sh
-    games/<name>/platform/                  launch_lib.sh, mem_wc_load.sh, ini_main.sh, profile .env,
+    games/<gamedir>/launch.sh               thin launcher -> platform/launch_lib.sh
+    games/<gamedir>/platform/                  launch_lib.sh, mem_wc_load.sh, ini_main.sh, profile .env,
                                             mister_mem_wc.env, mister_cores.tsv, mem_wc/*.ko
     linux/hybrid.d/<corename>.conf          MiSTer_hybrid registry entry
     linux/MiSTer_hybrid                     only with --hook-binary
@@ -19,7 +19,8 @@ Manifest (mister-port.toml):
     [port]
     name     = "CashCowDX"      # games/<name>, logs/<name>, Scripts/<name>.sh, RBF prefix
     title    = "Cash Cow DX"
-    corename = "CashCowDX"      # CONF_STR name (/tmp/CORENAME); default: name
+    corename = "CashCowDX"      # CONF_STR name (/tmp/CORENAME); may contain spaces; default: name
+    gamedir  = "CashCowDX"      # games/<gamedir>: launcher + engine payload; default: name
     profile  = "gm-fabric"      # spec/profiles/<profile>.toml; must list corename
     engine   = "godot4"         # informational
 
@@ -27,6 +28,8 @@ Manifest (mister-port.toml):
     process       = "cashcowdx"               # engine process name (comm)
     command       = ["./cashcowdx", "--main-pack", "CashCowDX.pck"]
     ready_pattern = "fabric bring-up"         # optional
+    fail_pattern  = "fabric bring-up SOFT-FAILED"  # optional: engine reports a dead fabric;
+                                              # the gate reloads the core as for a wedge
     cpu_isolate   = true                      # default true
     mem_wc        = true                      # default true
     fabric_gate   = true                      # default: true when the profile has a fabric
@@ -60,6 +63,8 @@ from mister_spec import load_all  # noqa: E402
 TEMPLATES = ROOT / "device" / "templates"
 NAME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,40}$")
 ENV_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+# CONF_STR names as MiSTer writes them to /tmp/CORENAME, e.g. "Cursed Castilla".
+CORENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.+-]{0,63}$")
 
 
 class ManifestError(Exception):
@@ -95,8 +100,11 @@ def load_manifest(path: Path) -> dict:
         raise ManifestError(f"[port] name {name!r}: letters, digits, _ only (it becomes paths and a CORENAME match)")
     port.setdefault("corename", name)
     port.setdefault("title", name)
-    if not NAME_RE.match(port["corename"]):
+    port.setdefault("gamedir", name)
+    if not CORENAME_RE.match(port["corename"]) or port["corename"].endswith(" "):
         raise ManifestError(f"[port] corename {port['corename']!r} is not a valid CONF_STR name")
+    if not NAME_RE.match(port["gamedir"]):
+        raise ManifestError(f"[port] gamedir {port['gamedir']!r}: letters, digits, _ only")
     if not re.match(r"^[A-Za-z0-9_.+-]+$", launch["process"]):
         raise ManifestError(f"[launch] process {launch['process']!r} is not a process name")
     if not isinstance(launch["command"], list) or not launch["command"]:
@@ -136,7 +144,8 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     port, launch, scripts = m["port"], m["launch"], m.get("scripts", {})
     prof = m["_profile"]
     name = port["name"]
-    gamedir = f"/media/fat/games/{name}"
+    gdir = port["gamedir"]
+    gamedir = f"/media/fat/games/{gdir}"
     logdir = f"/media/fat/logs/{name}"
     has_fabric = "fabric_ctrl" in prof.roles
     gate = launch.get("fabric_gate", has_fabric)
@@ -173,9 +182,10 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     values = {
         "NAME": name, "TITLE": port["title"], "CORENAME": port["corename"], "PROFILE": prof.name,
         "GAMEDIR": gamedir, "LOGDIR": logdir, "PROCESS": launch["process"],
-        "NAME_FIRST": name[0], "NAME_REST": name[1:],
+        "GDIR": gdir, "GDIR_FIRST": gdir[0], "GDIR_REST": gdir[1:],
         "COMMAND": " ".join(dq(str(a)) for a in launch["command"]),
         "READY_PATTERN": dq(launch.get("ready_pattern", "")),
+        "FAIL_PATTERN": dq(launch.get("fail_pattern", "")),
         "CPU_ISOLATE": "1" if launch.get("cpu_isolate", True) else "0",
         "MEM_WC": "1" if launch.get("mem_wc", True) else "0",
         "FABRIC_GATE_LINE": "" if gate else "MH_FABRIC_GATE=0",
@@ -192,13 +202,13 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         write(p, subst((TEMPLATES / template).read_text(), values), executable)
         written.append(p)
 
-    emit(f"games/{name}/launch.sh", "launch.sh.in", True)
+    emit(f"games/{gdir}/launch.sh", "launch.sh.in", True)
     emit(f"linux/hybrid.d/{port['corename']}.conf", "hybrid.conf.in")
     emit(f"Scripts/{name}.sh", "Scripts.sh.in", True)
     emit(f"Scripts/{name}_CoresMenu.sh", "CoresMenu.sh.in", True)
     emit(f"_Other/{name}.mgl", "mgl.in")
 
-    plat = out / "games" / name / "platform"
+    plat = out / "games" / gdir / "platform"
     gen = ROOT / "spec" / "generated"
     for src in [ROOT / "device/sh/launch_lib.sh", ROOT / "device/sh/mem_wc_load.sh", ROOT / "device/sh/ini_main.sh",
                 gen / f"mister_map_{prof.name.replace('-', '_')}.env", gen / "mister_mem_wc.env",

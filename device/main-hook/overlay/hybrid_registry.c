@@ -14,9 +14,10 @@ static void set_err(char *err, size_t errlen, const char *msg, const char *arg)
 static int corename_ok(const char *core)
 {
     if (!core || !*core || strlen(core) > 64) return 0;
-    if (strcmp(core, ".") == 0 || strcmp(core, "..") == 0) return 0;
+    if (core[0] == '.' || core[0] == ' ') return 0;
+    /* Spaces are allowed inside: CONF_STR names such as "Cursed Castilla". */
     for (const char *p = core; *p; p++)
-        if (!(isalnum((unsigned char)*p) || *p == '_' || *p == '-' || *p == '.')) return 0;
+        if (!(isalnum((unsigned char)*p) || *p == '_' || *p == '-' || *p == '.' || *p == ' ')) return 0;
     return 1;
 }
 
