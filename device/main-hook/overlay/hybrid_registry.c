@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE  /* glibc: readlink under -std=c11 */
 #include "hybrid_registry.h"
 
 #include <ctype.h>
