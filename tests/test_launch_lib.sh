@@ -8,7 +8,7 @@ HERE=$(cd "$(dirname "$0")" && pwd)
 PLAT=$(cd "$HERE/.." && pwd)
 T=$(mktemp -d)
 BG=()
-cleanup() { for p in "${BG[@]}"; do kill "$p" 2>/dev/null; done; rm -rf "$T"; }
+cleanup() { for p in "${BG[@]}"; do kill "$p" 2>/dev/null; done; [ -n "${KEEP:-}" ] && { echo "kept $T"; return; }; rm -rf "$T"; }
 trap cleanup EXIT
 pass=0 fail=0
 ok()   { pass=$((pass+1)); }
@@ -81,9 +81,12 @@ EOF
 #!/usr/bin/env bash
 MH_NAME=CashCowDX MH_CORENAME=CashCowDX MH_PROFILE=\${TEST_PROFILE:-gm-fabric}
 MH_GAMEDIR=$G MH_ENGINE=engine
-MH_ENGINE_CMD=(./engine --main-pack CashCowDX.pck)
 MH_READY_PATTERN="fabric bring-up" MH_GATE_WINDOW=\${TEST_GATE:-0} MH_READY_TIMEOUT=10
-mh_port_env() { export TEST_JOY_BASE="\$MISTER_GM_FABRIC_FB_BASE"; }
+MH_SELECT_FILE=\${TEST_SELECT:+$R/media/fat/config/CashCowDX.s0} MH_SELECT_EXT=pck
+mh_port_env() {
+    MH_ENGINE_CMD=(./engine --main-pack "\${MH_SELECTED:-CashCowDX.pck}")
+    export TEST_JOY_BASE="\$MISTER_GM_FABRIC_FB_BASE"
+}
 . "$G/platform/launch_lib.sh"
 mh_main
 EOF
@@ -97,6 +100,11 @@ launch() { # runs the launcher in the background; sets LPID
 wait_for() { # file pattern seconds
     local i=0
     while [ $i -lt $(($3 * 10)) ]; do grep -q -- "$2" "$1" 2>/dev/null && return 0; sleep 0.1; i=$((i+1)); done
+    return 1
+}
+wait_count() { # file pattern count seconds
+    local i=0
+    while [ $i -lt $(($4 * 10)) ]; do [ "$(grep -c -- "$2" "$1" 2>/dev/null)" -ge "$3" ] && return 0; sleep 0.1; i=$((i+1)); done
     return 1
 }
 finish() { # wait for launcher exit (up to FINISH_S, default 30 s), return its rc
@@ -272,6 +280,91 @@ finish; rc=$?
 has "$LOG" "core changed to 'MENU' during the gate -- no reload" "gate-window change: logged"
 hasnt "$LOG" "WEDGED" "gate-window change: reloaded anyway"
 [ ! -e "$R/tmp/mister-hybrid/CashCowDX.retry" ] && ok || bad "gate-window change: retry mark written"
+
+# 14. OSD file select: stale pick ignored, pick starts, same pick is a no-op, a new
+#    pick restarts, engine exit -> idle, next pick starts again, core change exits
+fresh CashCowDX
+: > "$R/devmem/advance"
+mkdir -p "$R/media/fat/config" "$R/media/fat/games/CashCowDX/q"
+: > "$R/media/fat/games/CashCowDX/q/a.pck"; : > "$R/media/fat/games/CashCowDX/q/b.pck"
+S0="$R/media/fat/config/CashCowDX.s0"
+printf 'games/CashCowDX/q/a.pck' > "$S0"                 # left over from an earlier session
+sleep 0.05
+launch TEST_SELECT=1
+wait_for "$LOG" "select: waiting for a pick" 10 || bad "select: never waited"
+sleep 1.2
+hasnt "$LOG" "engine args" "select: stale pick started the engine"
+printf 'games/CashCowDX/q/a.pck\0\0junk' > "$S0"          # Main_MiSTer may leave trailing bytes
+wait_for "$LOG" "fabric gate: done" 15 || bad "select: pick did not start the engine"
+has "$LOG" "engine args: --main-pack $R/media/fat/games/CashCowDX/q/a.pck" "select: engine got the resolved pick"
+printf 'games/CashCowDX/q/a.pck' > "$S0"
+wait_for "$LOG" "picked again -- already running" 5 || bad "select: same pick not recognised"
+printf 'games/CashCowDX/q/missing.pck' > "$S0"
+wait_for "$LOG" "does not name a file -- keeping" 5 || bad "select: bad pick not ignored"
+printf 'games/CashCowDX/q/b.pck' > "$S0"
+wait_for "$LOG" "engine args: --main-pack $R/media/fat/games/CashCowDX/q/b.pck" 15 || bad "select: new pick did not restart"
+has "$LOG" "engine got TERM" "select: old engine stopped on switch"
+wait_count "$LOG" "fabric gate: done" 2 10 && ok || bad "select: gate did not run per start (count-based ready)"
+kill "$(awk '{print $1}' "$R/tmp/mister-hybrid/engine.claim")"
+wait_count "$LOG" "cpu: restored" 2 5 || bad "select: cpu not restored after engine exit"
+wait_count "$LOG" "select: waiting for a pick" 2 5 || bad "select: not back to waiting"
+printf 'games/CashCowDX/q/a.pck' > "$S0"
+wait_count "$LOG" "select: starting" 3 5 && ok || bad "select: re-pick after exit ignored"
+[ "$(grep 'select: starting' "$LOG" | tail -1)" = "[CashCowDX] select: starting $R/media/fat/games/CashCowDX/q/a.pck" ] && ok || bad "select: third start not a.pck"
+wait_count "$LOG" "fabric gate: done" 3 15
+echo MENU > "$R/tmp/CORENAME"
+finish; rc=$?
+[ $rc = 0 ] && ok || bad "select: rc=$rc after core change"
+[ ! -e "$R/tmp/mister-hybrid/engine.claim" ] && ok || bad "select: claim not released"
+[ ! -d "$R/tmp/mister-hybrid/CashCowDX.lock" ] && ok || bad "select: lock not released"
+[ -z "$(ls -A "$R/tmp/mister-hybrid" 2>/dev/null)" ] && ok || bad "select: $R/tmp/mister-hybrid not empty: $(ls -A "$R/tmp/mister-hybrid")"
+[ "$(cat "$R/proc/irq/45/smp_affinity")" = 3 ] && ok || bad "select: USB IRQ not restored"
+
+# 15. select: another core while idle -> exit 0 without starting anything
+fresh CashCowDX
+launch TEST_SELECT=1
+wait_for "$LOG" "select: waiting for a pick" 10 || bad "select idle: never waited"
+echo MENU > "$R/tmp/CORENAME"
+finish; rc=$?
+[ $rc = 0 ] && ok || bad "select idle: rc=$rc"
+has "$LOG" "select: core changed to 'MENU' -- exiting" "select idle: exit logged"
+hasnt "$LOG" "engine args" "select idle: engine started"
+[ -z "$(ls -A "$R/tmp/mister-hybrid" 2>/dev/null)" ] && ok || bad "select idle: state dir not empty"
+
+# 16. select + wedged fabric: the pick survives the core reload even though the
+#     pick file is gone (Frontier deletes <core>.s0 on core load)
+fresh CashCowDX
+echo 0x00000005 > "$R/devmem/0x3B000028"; echo 0x00000009 > "$R/devmem/0x3B000000"
+mkdir -p "$R/media/fat/config" "$R/media/fat/games/CashCowDX/q"; : > "$R/media/fat/games/CashCowDX/q/a.pck"
+S0="$R/media/fat/config/CashCowDX.s0"
+echo "main=/media/fat/linux/MiSTer_hybrid" > "$R/media/fat/MiSTer.ini"   # the hook, not the helper, relaunches
+mkfifo "$R/dev/MiSTer_cmd"
+( exec 3<>"$R/dev/MiSTer_cmd"
+  read -r l1 <&3; echo MENU > "$R/tmp/CORENAME"
+  read -r l2 <&3; rm -f "$S0"; echo CashCowDX > "$R/tmp/CORENAME" ) &
+BG+=("$!")
+launch TEST_SELECT=1 TEST_GATE=1
+wait_for "$LOG" "select: waiting for a pick" 10 || bad "select wedged: never waited"
+printf 'games/CashCowDX/q/a.pck' > "$S0"
+finish; rc=$?
+[ $rc = 1 ] && ok || bad "select wedged: rc=$rc"
+[ "$(cat "$R/tmp/mister-hybrid/CashCowDX.retry.pick" 2>/dev/null)" = "$R/media/fat/games/CashCowDX/q/a.pck" ] && ok || bad "select wedged: pick not saved"
+: > "$R/devmem/advance"
+[ ! -e "$S0" ] && ok || bad "select wedged: test setup (pick file should be gone)"
+launch TEST_SELECT=1
+wait_for "$LOG" "fabric gate: done 0x00000005 -> 0x0000000" 15 || bad "select retry: engine not restarted from the saved pick"
+has "$LOG" "select: starting $R/media/fat/games/CashCowDX/q/a.pck" "select retry: saved pick used"
+i=0; while [ -e "$R/tmp/mister-hybrid/CashCowDX.retry.pick" ] && [ $i -lt 30 ]; do sleep 0.1; i=$((i+1)); done
+[ ! -e "$R/tmp/mister-hybrid/CashCowDX.retry" ] && [ ! -e "$R/tmp/mister-hybrid/CashCowDX.retry.pick" ] && ok || bad "select retry: marks not cleared after a good gate"
+echo MENU > "$R/tmp/CORENAME"; finish
+
+# 17. select: a retry mark left when the core changes while idle is cleared
+fresh CashCowDX
+mkdir -p "$R/tmp/mister-hybrid"; echo 1 > "$R/tmp/mister-hybrid/CashCowDX.retry"
+launch TEST_SELECT=1
+wait_for "$LOG" "select: waiting for a pick" 10 || bad "select idle retry: never waited"
+echo MENU > "$R/tmp/CORENAME"; finish
+[ -z "$(ls -A "$R/tmp/mister-hybrid" 2>/dev/null)" ] && ok || bad "select idle retry: state dir not empty: $(ls -A "$R/tmp/mister-hybrid")"
 
 echo "launch_lib: $pass passed, $fail failed"
 [ "$fail" = 0 ]

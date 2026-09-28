@@ -2,23 +2,25 @@
 # launch_lib.sh -- the shared engine launcher for MiSTer hybrid ports.
 #
 # A port's launch.sh (rendered from mister-port.toml) sets the MH_* variables
-# below, defines the engine command, sources this file and calls mh_main:
+# below, defines the engine command (MH_ENGINE_CMD, here or in mh_port_env),
+# sources this file and calls mh_main:
 #
 #   MH_NAME=CashCowDX  MH_CORENAME=CashCowDX  MH_PROFILE=gm-fabric
 #   MH_GAMEDIR=/media/fat/games/CashCowDX  MH_ENGINE=cashcowdx
-#   MH_ENGINE_CMD=(./cashcowdx --main-pack CashCowDX.pck)
+#   mh_port_env() { MH_ENGINE_CMD=(./cashcowdx --main-pack CashCowDX.pck); }
 #   . "$MH_GAMEDIR/platform/launch_lib.sh"; mh_main
 #
 # Sequence (merged from cash.cow.dx / donut.dodo / maldita launch.sh and
 # solarus solarus_run.sh):
 #   core check -> profile check -> lock -> stop other fabric engines ->
-#   FPGA-ready wait -> mem_wc -> start engine -> (ready line) -> CPU isolate ->
-#   fabric gate (reload core + retry if the blitter wedged) -> watchdog (core
-#   change; optional mid-game fabric stall).
+#   FPGA-ready wait -> mem_wc -> [select: wait for an OSD pick] -> start engine ->
+#   (ready line) -> CPU isolate -> fabric gate (reload core + retry if the
+#   blitter wedged) -> watchdog (core change; optional mid-game fabric stall)
+#   [select: a new pick restarts the engine].
 #
 # Required:  MH_NAME MH_CORENAME MH_PROFILE MH_GAMEDIR MH_ENGINE MH_ENGINE_CMD
 # Hook:      mh_port_env()  if defined, called after the profile map is loaded
-#                           and before the engine starts: export the engine env here
+#                           and before every engine start: export the engine env here
 # Optional (default):
 #   MH_LOGDIR (/media/fat/logs/$MH_NAME)   MH_PLATFORM_DIR ($MH_GAMEDIR/platform)
 #   MH_LOG ($MH_LOGDIR/<name lowercased>.log)  the engine log
@@ -33,8 +35,20 @@
 #                          3 for an engine that does not pin (with MH_CPU_ISOLATE=0)
 #   MH_STALL_S (0)         watchdog: reload the core when C_DONE stays frozen behind
 #                          C_SUBMIT this many seconds mid-game; 0 = off (donut PLAN §1j)
+#   MH_SELECT_FILE ("")    OSD file-select mode (below); usually /media/fat/config/<core>.s0
+#   MH_SELECT_EXT ("")     with MH_SELECT_FILE: the picked file's extension, e.g. sol
 #   MH_TEST_ENV (/tmp/<name>_test.env)  sourced if present -- measurement hook; sourced
 #                          again after mh_port_env so it can override the engine env
+#
+# OSD file-select mode (MH_SELECT_FILE set; solarus-mister's quest picker, the
+# OpenBOR/PICO-8 pattern): the core loads with no game. Main_MiSTer writes the
+# path picked from the core's CONF_STR "S0" entry, relative to /media/fat, to
+# config/<core>.s0. The launcher idles until that file is written AFTER it
+# started (a pick left over from an earlier session is not replayed), then runs
+# the engine with MH_SELECTED=<absolute path>; mh_port_env is called again for
+# every start, so the command and env may use $MH_SELECTED. A newer pick of a
+# different file restarts the engine with it; when the engine exits the launcher
+# waits for the next pick; it exits when another core is loaded.
 #
 # Everything before the engine starts avoids forks where a builtin does: each
 # fork costs ~10-25 ms on the A9 while MiSTer loads the core (cash.cow PLAN §6.28).
@@ -53,6 +67,8 @@ MH_CLAIM="$MH_STATE_DIR/engine.claim"
 mh_log() { echo "[$MH_NAME] $*"; }
 mh_nap() { sleep "$1" & wait $!; }        # interruptible: SIGTERM runs the trap now
 mh_devmem() { ${MH_DEVMEM:-busybox devmem} "$1" 32 2>/dev/null; }
+# Lines in the engine log matching $1 (0 when the log does not exist yet).
+mh_log_count() { local n; n=$(grep -c -- "$1" "$MH_LOG" 2>/dev/null); echo "${n:-0}"; }
 mh_corename() { local c=""; read -r c 2>/dev/null < "$MH_ROOT/tmp/CORENAME"; echo "$c"; }
 
 mh_defaults() {
@@ -69,6 +85,8 @@ mh_defaults() {
     MH_MAX_RETRIES=${MH_MAX_RETRIES:-4}
     MH_ENGINE_CPU=${MH_ENGINE_CPU:-2}
     MH_STALL_S=${MH_STALL_S:-0}
+    MH_SELECT_FILE=${MH_SELECT_FILE:-}
+    MH_SELECT_EXT=${MH_SELECT_EXT:-}
     MH_TEST_ENV=${MH_TEST_ENV:-$MH_ROOT/tmp/${MH_NAME,,}_test.env}
     MH_MAIN_HOOK=${MH_MAIN_HOOK:-${MH_PLATFORM_DIR#"$MH_ROOT"}/MiSTer_hybrid}
     MH_LOG=${MH_LOG:-$MH_LOGDIR/${MH_NAME,,}.log}
@@ -165,7 +183,7 @@ mh_stop_other_engines() {
 
 mh_claim() { echo "$1 $MH_ENGINE $MH_CORENAME" > "$MH_CLAIM"; }
 mh_unclaim() {
-    local pid _
+    local pid="" _
     read -r pid _ 2>/dev/null < "$MH_CLAIM"
     [ "$pid" = "$1" ] && rm -f "$MH_CLAIM"
 }
@@ -227,15 +245,66 @@ mh_cpu_isolate() {
 }
 mh_cpu_restore() {
     [ "$MH_CPU_ISOLATE" = 1 ] || return 0
-    if [ -n "${MH_USB_IRQ:-}" ] && [ -n "${MH_USB_IRQ_MASK:-}" ]; then
+    [ -n "${MH_USB_IRQ+x}" ] || return 0               # not isolated, or already restored
+    if [ -n "$MH_USB_IRQ" ] && [ -n "${MH_USB_IRQ_MASK:-}" ]; then
         echo "$MH_USB_IRQ_MASK" > "$MH_ROOT/proc/irq/$MH_USB_IRQ/smp_affinity" 2>/dev/null
     fi
+    unset MH_USB_IRQ
     local e
     for e in $MH_MOVED; do
         taskset -a -p "${e#*:}" "${e%%:*}" >/dev/null 2>&1
     done
     MH_MOVED=""
     mh_log "cpu: restored"
+}
+
+# --- OSD file select --------------------------------------------------------------
+# MH_SELECT_REF is touched whenever a pick has been read; the pick file being
+# newer than it (test -nt, a builtin) is a new pick. No fork per poll.
+mh_select_mark() { : > "$MH_SELECT_REF"; }
+mh_select_new() { [ "$MH_SELECT_FILE" -nt "$MH_SELECT_REF" ]; }
+
+# Resolve the pick file to an absolute path in MH_SELECT_PICK; 1 if it names no
+# existing file. Main_MiSTer writes the path relative to /media/fat and may leave
+# trailing bytes after it, so cut after the first ".$MH_SELECT_EXT".
+mh_select_resolve() {
+    local raw="" sel
+    MH_SELECT_PICK=""
+    IFS= read -r -d '' raw 2>/dev/null < "$MH_SELECT_FILE"
+    raw=${raw//$'\r'/}; raw=${raw%%$'\n'*}
+    if [ -n "$MH_SELECT_EXT" ]; then
+        case "$raw" in *".$MH_SELECT_EXT"*) ;; *) return 1 ;; esac
+        sel="${raw%%".$MH_SELECT_EXT"*}.$MH_SELECT_EXT"
+    else
+        sel=$raw
+    fi
+    sel=${sel#"${sel%%[![:space:]]*}"}; sel=${sel%"${sel##*[![:space:]]}"}
+    [ -n "$sel" ] || return 1
+    case "$sel" in
+        /*) [ -f "$sel" ] || return 1 ;;
+        *)  [ -f "$MH_ROOT/media/fat/$sel" ] || return 1; sel="$MH_ROOT/media/fat/$sel" ;;
+    esac
+    MH_SELECT_PICK=$sel
+}
+
+# Idle until a new, resolvable pick (return 0, MH_SELECT_PICK set) or until
+# another core is loaded (return 1).
+mh_select_wait() {
+    local cur
+    mh_log "select: waiting for a pick in $MH_SELECT_FILE"
+    while :; do
+        cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
+        if [ "$cur" != "$MH_CORENAME" ]; then
+            mh_log "select: core changed to '$cur' -- exiting"
+            return 1
+        fi
+        if mh_select_new; then
+            mh_select_mark
+            if mh_select_resolve; then return 0; fi
+            mh_log "select: pick does not name a file -- still waiting"
+        fi
+        mh_nap 1
+    done
 }
 
 # --- engine ----------------------------------------------------------------------
@@ -266,13 +335,14 @@ mh_wait_ready() {
         # Another core already: skip ahead; the gate is skipped and the watchdog stops the engine.
         cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
         [ "$cur" = "$MH_CORENAME" ] || return 0
-        # The fail line may also match the ready pattern ("fabric bring-up
-        # SOFT-FAILED" vs "fabric bring-up"), and it can land between two greps:
-        # check the fail pattern again once the ready line is seen.
-        if [ -n "$MH_READY_PATTERN" ] && grep -q "$MH_READY_PATTERN" "$MH_LOG" 2>/dev/null; then
-            [ -z "$MH_FAIL_PATTERN" ] || ! grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null && return 0
+        # Counts above MH_*_BASE: a select-mode launcher runs the engine more than
+        # once into the same log. The fail line may also match the ready pattern
+        # ("fabric bring-up SOFT-FAILED" vs "fabric bring-up"), and it can land
+        # between two greps: check the fail pattern again once the ready line is seen.
+        if [ -n "$MH_READY_PATTERN" ] && [ "$(mh_log_count "$MH_READY_PATTERN")" -gt "$MH_READY_BASE" ]; then
+            [ -z "$MH_FAIL_PATTERN" ] || [ "$(mh_log_count "$MH_FAIL_PATTERN")" -le "$MH_FAIL_BASE" ] && return 0
         fi
-        if [ -n "$MH_FAIL_PATTERN" ] && grep -q "$MH_FAIL_PATTERN" "$MH_LOG" 2>/dev/null; then
+        if [ -n "$MH_FAIL_PATTERN" ] && [ "$(mh_log_count "$MH_FAIL_PATTERN")" -gt "$MH_FAIL_BASE" ]; then
             mh_log "fabric gate: engine reports '$MH_FAIL_PATTERN'"
             return 2
         fi
@@ -330,6 +400,7 @@ mh_cleanup() {
     mh_cpu_restore &
     pids="$pids $!"
     rm -rf "$MH_LOCKDIR"
+    [ -n "${MH_SELECT_REF:-}" ] && rm -f "$MH_SELECT_REF"
     # Only these two: a bare wait also waited for the engine's log pipe and any
     # other child (a gate-retry reload helper kept the old launcher alive for the
     # whole next session).
@@ -337,13 +408,15 @@ mh_cleanup() {
     wait $pids
 }
 
-# Stop the engine when another core is loaded from the OSD. With MH_STALL_S,
+# Stop the engine when another core is loaded from the OSD, or (select mode)
+# when a different file is picked; MH_SELECT_SWITCH=1 then. With MH_STALL_S,
 # also reload the core when the fabric wedges mid-game: C_DONE frozen with
 # C_SUBMIT ahead of it (donut PLAN §1j saw this ~2 min into play after a clean
 # start). While the fabric is healthy C_DONE moves every frame, or equals
 # C_SUBMIT when idle.
 mh_watchdog() {
     local cur d s stall=0 last_done=""
+    MH_SELECT_SWITCH=0
     while kill -0 "$MH_ENGINE_PID" 2>/dev/null; do
         # read, not $(mh_corename): no fork per second next to the engine (cash.cow PLAN §6.25)
         cur=""; read -r cur 2>/dev/null < "$MH_ROOT/tmp/CORENAME"
@@ -364,10 +437,24 @@ mh_watchdog() {
                 mh_log "watchdog: fabric WEDGED (done $d, submit $s for ${stall}s) -- reloading the core"
                 mh_stop_engine
                 echo 1 > "$MH_RETRY_MARK"
+                [ -z "$MH_SELECT_FILE" ] || echo "$MH_SELECTED" > "$MH_RETRY_MARK.pick"
                 mh_cpu_restore
                 rm -rf "$MH_LOCKDIR"
                 mh_reload_core
                 exit 1
+            fi
+        fi
+        if [ -n "$MH_SELECT_FILE" ] && mh_select_new; then
+            mh_select_mark
+            if ! mh_select_resolve; then
+                mh_log "select: pick does not name a file -- keeping $MH_SELECTED"
+            elif [ "$MH_SELECT_PICK" = "$MH_SELECTED" ]; then
+                mh_log "select: $MH_SELECTED picked again -- already running"
+            else
+                mh_log "select: new pick $MH_SELECT_PICK -- stopping the engine"
+                mh_stop_engine
+                MH_SELECT_SWITCH=1
+                break
             fi
         fi
         mh_nap 1
@@ -404,6 +491,49 @@ mh_main() {
 
     local attempt=""
     read -r attempt 2>/dev/null < "$MH_RETRY_MARK"; case "$attempt" in ''|*[!0-9]*) attempt=0 ;; esac
+    if [ -z "$MH_SELECT_FILE" ]; then
+        mh_run_engine "$attempt" || exit 1
+        return 0
+    fi
+
+    # Select mode. A gate retry reloaded the core under a running pick: start
+    # that pick again. The launcher saved it, because the pick file itself may be
+    # gone (MiSTer Frontier's Master_Daemon deletes <core>.s0 on every core load).
+    # Otherwise only a pick written from now on counts.
+    MH_SELECT_REF="$MH_STATE_DIR/$MH_NAME.select"
+    local have=0 saved=""
+    mh_select_mark
+    if [ "$attempt" -gt 0 ]; then
+        read -r saved 2>/dev/null < "$MH_RETRY_MARK.pick"
+        if [ -n "$saved" ] && [ -f "$saved" ]; then MH_SELECT_PICK=$saved; have=1; fi
+    fi
+    while :; do
+        if [ $have = 0 ] && ! mh_select_wait; then
+            rm -f "$MH_RETRY_MARK" "$MH_RETRY_MARK.pick"      # retry abandoned
+            return 0
+        fi
+        have=0
+        MH_SELECTED=$MH_SELECT_PICK
+        export MH_SELECTED
+        mh_log "select: starting $MH_SELECTED"
+        mh_run_engine "$attempt" || true
+        attempt=0
+        [ "$(mh_corename)" = "$MH_CORENAME" ] || return 0
+        if [ "$MH_SELECT_SWITCH" = 1 ]; then have=1; fi
+    done
+}
+
+# One engine run: start, ready, CPU placement, fabric gate, watchdog, wait.
+# 1 = the engine died during start-up or the gate reloaded the core.
+mh_run_engine() { # attempt
+    local attempt=$1
+    MH_SELECT_SWITCH=0
+    MH_READY_BASE=0 MH_FAIL_BASE=0
+    # A select-mode launcher runs the engine more than once into the same log.
+    if [ -n "$MH_SELECT_FILE" ]; then
+        [ -z "$MH_READY_PATTERN" ] || MH_READY_BASE=$(mh_log_count "$MH_READY_PATTERN")
+        [ -z "$MH_FAIL_PATTERN" ] || MH_FAIL_BASE=$(mh_log_count "$MH_FAIL_PATTERN")
+    fi
     # The port's engine environment (rendered launch.sh), after the profile map.
     if declare -F mh_port_env >/dev/null; then mh_port_env; fi
     # shellcheck disable=SC1090
@@ -411,7 +541,10 @@ mh_main() {
     mh_start_engine
     local ready=0
     mh_wait_ready || ready=$?
-    [ "$ready" = 1 ] && exit 1
+    if [ "$ready" = 1 ]; then
+        mh_unclaim "$MH_ENGINE_PID"; MH_ENGINE_PID=""
+        return 1
+    fi
     mh_cpu_isolate
     # The user may load another core during the ready wait or the gate window:
     # never reload our core over that choice (seen on .81 with Solarus); the
@@ -423,6 +556,7 @@ mh_main() {
             mh_log "fabric gate: core changed to '$cur' during the gate -- no reload"
         elif [ "$attempt" -lt "$MH_MAX_RETRIES" ]; then
             echo $((attempt + 1)) > "$MH_RETRY_MARK"
+            [ -z "$MH_SELECT_FILE" ] || echo "$MH_SELECTED" > "$MH_RETRY_MARK.pick"
             mh_log "fabric gate: WEDGED -- reloading the core, attempt $((attempt + 1))/$MH_MAX_RETRIES"
             mh_stop_engine
             mh_cpu_restore
@@ -432,11 +566,14 @@ mh_main() {
         fi
         mh_log "fabric gate: still wedged after $attempt attempts -- leaving the engine running"
     fi
-    rm -f "$MH_RETRY_MARK"
+    rm -f "$MH_RETRY_MARK" "$MH_RETRY_MARK.pick"
 
     # mh_stop_engine clears MH_ENGINE_PID; wait on the saved pid for the real status.
     local epid=$MH_ENGINE_PID
     mh_watchdog
     wait "$epid" 2>/dev/null
     mh_log "engine: exited ($?)"
+    mh_unclaim "$epid"; MH_ENGINE_PID=""
+    mh_cpu_restore
+    return 0
 }

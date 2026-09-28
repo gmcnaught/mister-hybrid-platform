@@ -123,6 +123,18 @@ class Manifest(unittest.TestCase):
         mp.render(mp.load_manifest(manifest()), out, None)
         self.assertNotIn("MH_STALL_S", (out / "games/CashCowDX/launch.sh").read_text())
 
+    def test_select_default_file(self):
+        m = mp.load_manifest(manifest(name="Solarus", profile="solarus-fabric", extra_launch='[launch.select]\next = "sol"'))
+        self.assertEqual(m["launch"]["select"]["file"], "/media/fat/config/Solarus.s0")
+
+    def test_select_bad_ext(self):
+        with self.assertRaisesRegex(mp.ManifestError, "ext"):
+            mp.load_manifest(manifest(name="Solarus", profile="solarus-fabric", extra_launch='[launch.select]\next = ".sol"'))
+
+    def test_select_bad_file(self):
+        with self.assertRaisesRegex(mp.ManifestError, "absolute /media/fat"):
+            mp.load_manifest(manifest(name="Solarus", profile="solarus-fabric", extra_launch='[launch.select]\nfile = "config/x.s0"'))
+
     def test_quoting(self):
         self.assertEqual(mp.dq('a "b" `c` \\d $E'), '"a \\"b\\" \\`c\\` \\\\d $E"')
 

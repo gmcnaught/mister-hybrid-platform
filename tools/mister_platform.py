@@ -52,6 +52,13 @@ Manifest (mister-port.toml):
     osd_reset     = 19                        # optional: CONF_STR "T" status bit whose OSD pulse
                                               # makes MiSTer_hybrid restart the launcher
 
+    [launch.select]                           # optional: OSD file-select mode
+    file = "/media/fat/config/Solarus.s0"     # default /media/fat/config/<corename>.s0
+    ext  = "sol"                              # the picked file's extension
+                     # the launcher idles until a file is picked from the core's CONF_STR
+                     # S0 entry, runs the engine with $MH_SELECTED = its absolute path,
+                     # restarts on a new pick; see device/sh/launch_lib.sh
+
     [scripts]
     required_files = [ ["CashCowDX.pck", "copy it from your GOG install (see README.md)"] ]
     extra          = "dist/scripts-extra.sh"  # optional snippet, relative to the manifest
@@ -153,6 +160,15 @@ def load_manifest(path: Path) -> dict:
     for k in launch.get("env", {}):
         if not ENV_RE.match(k):
             raise ManifestError(f"[launch] env key {k!r} is not a shell variable name")
+    sel = launch.get("select")
+    if sel is not None:
+        if not isinstance(sel, dict):
+            raise ManifestError("[launch.select] must be a table")
+        sel.setdefault("file", f"/media/fat/config/{port['corename']}.s0")
+        if not re.match(r"^/media/fat/[A-Za-z0-9_./-]+$", sel["file"]):
+            raise ManifestError(f"[launch.select] file {sel['file']!r}: expected an absolute /media/fat path")
+        if not re.match(r"^[A-Za-z0-9]{0,8}$", sel.get("ext", "")):
+            raise ManifestError(f"[launch.select] ext {sel.get('ext')!r}: letters and digits, no dot")
     profiles = load_all()
     prof = profiles.get(port["profile"])
     if prof is None:
@@ -197,6 +213,11 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     # Optional launcher settings: ${VAR:-value}, so the environment can still override them.
 
     env_lines = [f"    export {k}={dq(str(v))}" for k, v in launch.get("env", {}).items()]
+    sel = launch.get("select")
+    select_lines = ""
+    if sel is not None:
+        select_lines = (f"\nMH_SELECT_FILE=\"${{MH_ROOT:-}}{sel['file']}\""
+                        f"\nMH_SELECT_EXT={dq(sel.get('ext', ''))}")
     req = []
     for entry in scripts.get("required_files", []):
         f, hint = (entry + [""])[:2] if isinstance(entry, list) else (entry, "")
@@ -255,6 +276,7 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         "CPU_ISOLATE": "1" if launch.get("cpu_isolate", True) else "0",
         "MEM_WC": "1" if launch.get("mem_wc", True) else "0",
         "FABRIC_GATE_LINE": "" if gate else "MH_FABRIC_GATE=0",
+        "SELECT_LINES": select_lines,
         "ENV_EXPORTS": "\n".join(env_lines),
         "REQUIRED_FILES": "\n".join(req),
         "SCRIPTS_EXTRA": extra,

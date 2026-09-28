@@ -193,5 +193,16 @@ env MH_HOOK="$H" MH_INI="$INI" MH_REGISTRY="$SF/games/cursedcastilla/platform/hy
 has "$INI" "^main=$H$" "spaced: toggle replaced the legacy main="
 [ "$(grep -c '^\[Cursed Castilla\]$' "$INI")" = 1 ] && ok || bad "spaced: duplicated section"
 
+# --- OSD file-select manifest (examples/solarus) -------------------------------
+S="$T/sol"
+python3 "$PLAT/tools/mister_platform.py" render "$PLAT/examples/solarus/mister-port.toml" --out "$S" > /dev/null && ok || bad "solarus render failed"
+if command -v shellcheck >/dev/null; then
+    shellcheck -s bash "$S/games/Solarus/launch.sh" "$S"/Scripts/*.sh && ok || bad "shellcheck on rendered solarus scripts"
+fi
+has "$S/games/Solarus/launch.sh" 'MH_SELECT_FILE="${MH_ROOT:-}/media/fat/config/Solarus.s0"' "select: file line"
+has "$S/games/Solarus/launch.sh" '^MH_SELECT_EXT="sol"$' "select: ext line"
+has "$S/games/Solarus/launch.sh" 'MH_ENGINE_CMD=("./solarus_start.sh" "$MH_SELECTED")' "select: command in mh_port_env"
+grep -q MH_SELECT_FILE "$F/games/CashCowDX/launch.sh" && bad "select lines rendered for a manifest without [launch.select]" || ok
+
 echo "render: $pass passed, $fail failed"
 [ "$fail" = 0 ]
