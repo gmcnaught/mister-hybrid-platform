@@ -7,11 +7,12 @@
 # It adds this to /media/fat/MiSTer.ini (backed up first):
 #
 #   [@CORENAME@]
-#   main=/media/fat/linux/MiSTer_hybrid
+#   main=@HOOK@
 #
 # main= is MiSTer's per-core "run this Main binary instead of /media/fat/MiSTer
 # while this core is loaded". MiSTer_hybrid is upstream Main_MiSTer plus one call
-# that looks the core up in /media/fat/linux/hybrid.d/ and starts its launcher.
+# that looks the core up in @REGISTRY_DIR@/ and starts its launcher.
+# An older main=@LEGACY_HOOK@ (platform v0.3.x) is replaced.
 # Loading any other core switches back to the normal /media/fat/MiSTer. If
 # MiSTer_hybrid is missing, MiSTer ignores the line and just loads the core.
 #
@@ -19,22 +20,22 @@
 
 CORENAME="@CORENAME@"
 # The MH_* overrides let a host test the MiSTer.ini edit; MiSTer never sets them.
-WRAPPER="${MH_HOOK:-/media/fat/linux/MiSTer_hybrid}"
-REGISTRY="${MH_REGISTRY:-/media/fat/linux/hybrid.d}/$CORENAME.conf"
+WRAPPER="${MH_HOOK:-@HOOK@}"
+REGISTRY="${MH_REGISTRY:-@REGISTRY_DIR@}/$CORENAME.conf"
 PLATFORM="${MH_PLATFORM_DIR:-@GAMEDIR@/platform}"
 MH_INI_FILE="${MH_INI:-/media/fat/MiSTer.ini}"
 # shellcheck disable=SC2034  # read by platform/ini_main.sh
 MH_INI_SECTION="$CORENAME"
-# Only the hooked build contains this path; a stock Main_MiSTer renamed to
-# MiSTer_hybrid would load the core and never start the game.
-WRAPPER_MARK="/media/fat/linux/hybrid.d"
+# Only the hooked build contains this string (hybrid_registry.h); a stock
+# Main_MiSTer renamed to MiSTer_hybrid would load the core and never start the game.
+WRAPPER_MARK="MiSTer_hybrid registry: <binary dir>/hybrid.d"
 
 die() { echo "$*" >&2; exit 1; }
 [ -r "$PLATFORM/ini_main.sh" ] || die "not found: $PLATFORM/ini_main.sh -- extract the release zip over /media/fat again."
 # shellcheck disable=SC1091
 . "$PLATFORM/ini_main.sh"
 
-# Only this core's section counts: other hybrid ports use the same main= path.
+# Only this core's section counts.
 if [ "$(mh_ini_main)" = "$WRAPPER" ]; then
     echo "Cores-menu start is currently ON. Turning it off."
     mh_ini_disable_main "$WRAPPER" "@NAME@_CoresMenu" || die "edit failed -- $MH_INI_FILE is unchanged except for the backup"

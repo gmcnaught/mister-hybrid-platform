@@ -4,16 +4,23 @@ This is upstream Main_MiSTer with one call inserted after `scheduler_wait_fpga_r
 in `scheduler_co_poll()`. The call:
 
 1. reads `/tmp/CORENAME` (via `user_io_get_core_name()`);
-2. looks up `/media/fat/linux/hybrid.d/<CORENAME>.conf` (`overlay/hybrid_registry.c`);
+2. looks up `<CORENAME>.conf` in the `hybrid.d/` directory next to its own executable
+   (`/proc/self/exe`, `overlay/hybrid_registry.c`);
 3. if an entry exists and the `noengine` flag file is absent, spawns `launcher=` detached,
    with stdout/stderr going to `log=`.
 
-A core with no entry behaves as stock MiSTer. `MiSTer.ini` routes each hybrid core here:
+A core with no entry behaves as stock MiSTer. Each port installs its own copy of the
+binary and entry in `games/<gamedir>/platform/`. They are not under `linux/`, which the
+Downloader refuses for every database but `distribution_mister`. `MiSTer.ini` routes each
+hybrid core to its port's copy:
 
 ```ini
 [CashCowDX]
-main=/media/fat/linux/MiSTer_hybrid
+main=/media/fat/games/CashCowDX/platform/MiSTer_hybrid
 ```
+
+The entry is then read from `/media/fat/games/CashCowDX/platform/hybrid.d/CashCowDX.conf`.
+`$MISTER_HYBRID_REGISTRY` overrides the directory (host tests).
 
 The port's `Scripts/<Name>_CoresMenu.sh`, rendered by `mister-platform`, toggles that line.
 
@@ -47,7 +54,7 @@ osd_reset = 19          # CONF_STR "TJ,Reset;" -> status bit 19 (letter J = 19)
 ```
 
 ```ini
-# linux/hybrid.d/<CORENAME>.conf
+# games/<gamedir>/platform/hybrid.d/<CORENAME>.conf
 osd_reset=19                                         # 0..31, else the entry is rejected
 reset_clear=/tmp/mister-hybrid/<name>.retry          # launch_lib fabric-retry mark
 reset_clear=/tmp/mister-hybrid/<name>.lock/pid       # launch_lib lock (file, then dir)

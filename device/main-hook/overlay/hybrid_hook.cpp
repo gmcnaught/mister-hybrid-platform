@@ -3,11 +3,12 @@
  * Replaces the per-port MiSTer_Maldita / MiSTer_CursedCastilla /
  * MiSTer_DonutDodo / MiSTer_CashCowDX builds, which were upstream Main_MiSTer
  * plus this hook with the core name and launcher path compiled in. Here the
- * mapping comes from /media/fat/linux/hybrid.d/<CORENAME>.conf (see
- * hybrid_registry.h), so one binary serves every port:
+ * mapping comes from hybrid.d/<CORENAME>.conf next to this binary (see
+ * hybrid_registry.h), so one build serves every port. Each port installs a copy
+ * in its own games/<gamedir>/platform/ folder:
  *
  *   MiSTer.ini   [CashCowDX]
- *                main=/media/fat/linux/MiSTer_hybrid
+ *                main=/media/fat/games/CashCowDX/platform/MiSTer_hybrid
  *
  * The call sits after scheduler_wait_fpga_ready(): Maldita measured a wrapper
  * that spawned the engine before that wait wedging the fabric on frame 1 in 3
@@ -98,11 +99,12 @@ int64_t now_ms()
 
 bool spawn_launcher(const char *core)
 {
-    char buf[400];
+    char buf[512];
     char *const argv[] = { g_entry.launcher, NULL };
     g_child = hybrid_child_spawn(argv, g_log[0] ? g_log : NULL);
     if (g_child < 0) snprintf(buf, sizeof(buf), "core %s: FAILED to spawn %s", core, g_entry.launcher);
-    else snprintf(buf, sizeof(buf), "core %s (%s): spawned %s pid=%d", core, g_entry.profile, g_entry.launcher, (int)g_child);
+    else snprintf(buf, sizeof(buf), "core %s (%s): spawned %s pid=%d (" HYBRID_REGISTRY_MARK ")",
+                  core, g_entry.profile, g_entry.launcher, (int)g_child);
     hlog(buf);
     return g_child > 0;
 }

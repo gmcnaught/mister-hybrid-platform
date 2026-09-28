@@ -3,9 +3,15 @@
 
 /* Port registry for the shared MiSTer_hybrid main= binary.
  *
+ * The registry is the hybrid.d/ directory next to the running binary
+ * (/proc/self/exe), so each port installs the binary and its entry inside its
+ * own games/<gamedir>/platform/ folder. Nothing lives under /media/fat/linux:
+ * the Downloader refuses that root folder for every database except
+ * distribution_mister, so update_all could not install it.
+ *
  * One file per hybrid core, named for its CONF_STR core name (/tmp/CORENAME):
  *
- *   /media/fat/linux/hybrid.d/CashCowDX.conf
+ *   /media/fat/games/CashCowDX/platform/hybrid.d/CashCowDX.conf
  *     launcher=/media/fat/games/CashCowDX/launch.sh     (required, absolute, executable)
  *     log=/media/fat/logs/CashCowDX/launch.log          (optional; launcher stdout/stderr)
  *     noengine=/media/fat/games/CashCowDX/NOENGINE      (optional; if this file exists, do not start)
@@ -27,7 +33,10 @@
 extern "C" {
 #endif
 
-#define HYBRID_REGISTRY_DIR "/media/fat/linux/hybrid.d"
+#define HYBRID_REGISTRY_SUBDIR "hybrid.d"
+/* Linked into the binary (logged on every spawn): CoresMenu.sh and build-hps.sh
+ * grep for it to tell MiSTer_hybrid from a renamed stock Main_MiSTer. */
+#define HYBRID_REGISTRY_MARK "MiSTer_hybrid registry: <binary dir>/" HYBRID_REGISTRY_SUBDIR
 #define HYBRID_PATH_MAX 256
 #define HYBRID_RESET_CLEAR_MAX 4
 
@@ -48,9 +57,16 @@ typedef enum {
     HYBRID_BAD_ENTRY,      /* unreadable, malformed, launcher missing/not absolute, bad osd_reset/reset_clear */
 } hybrid_status_t;
 
-/* Look up <dir>/<core>.conf. dir NULL -> HYBRID_REGISTRY_DIR (overridable at
- * runtime with $MISTER_HYBRID_REGISTRY for tests). On HYBRID_BAD_ENTRY, err
- * (if non-NULL) receives a one-line reason. */
+/* <dirname of exe>/hybrid.d into out. 0 if exe has no '/' or out is too small. */
+int hybrid_registry_dir_for_exe(const char *exe, char *out, size_t outlen);
+
+/* The registry this process uses: $MISTER_HYBRID_REGISTRY when set (tests),
+ * else hybrid_registry_dir_for_exe(readlink /proc/self/exe). 0 on failure. */
+int hybrid_registry_default_dir(char *out, size_t outlen);
+
+/* Look up <dir>/<core>.conf. dir NULL -> hybrid_registry_default_dir(); if that
+ * fails the result is HYBRID_BAD_ENTRY. On HYBRID_BAD_ENTRY, err (if non-NULL)
+ * receives a one-line reason. */
 hybrid_status_t hybrid_registry_lookup(const char *dir, const char *core,
                                        hybrid_entry_t *out, char *err, size_t errlen);
 

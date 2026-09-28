@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Build MiSTer_hybrid: upstream Main_MiSTer at UPSTREAM_COMMIT + overlay/ + one
 # inserted call in scheduler.cpp. One binary for every hybrid port; the port is
-# chosen at runtime from /media/fat/linux/hybrid.d/<CORENAME>.conf.
+# chosen at runtime from hybrid.d/<CORENAME>.conf next to the binary.
 #
 # Upstream edits, inserted at build time at anchors; the build fails if an anchor
 # is missing or matches more than once:
@@ -115,7 +115,7 @@ docker run --rm -u "$(id -u):$(id -g)" -v "$SRC:/src" -w /src "$IMAGE" \
 cp "$SRC/bin/$PRJ" "$OUT/$PRJ"
 # A stock Main_MiSTer renamed MiSTer_hybrid runs fine and never starts a game;
 # gate on the hook's strings being linked in.
-for s in "hybrid_hook: " "/media/fat/linux/hybrid.d" "OSD Reset armed on status bit"; do
+for s in "hybrid_hook: " "MiSTer_hybrid registry: <binary dir>/hybrid.d" "OSD Reset armed on status bit"; do
     grep -q "$s" "$OUT/$PRJ" || { echo "hook string '$s' missing from $PRJ" >&2; exit 1; }
 done
 echo "built $OUT/$PRJ (Main_MiSTer@${UPSTREAM_COMMIT:0:7})"

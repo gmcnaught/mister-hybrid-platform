@@ -15,46 +15,56 @@ has() { if grep -q -- "$2" "$1" 2>/dev/null; then ok; else bad "$3: '$2' not in 
 
 R="$T/root"; F="$R/media/fat"
 # A stand-in hook binary carrying the marker string the CoresMenu toggle checks.
-printf 'ELF...hybrid_hook: .../media/fat/linux/hybrid.d...' > "$T/MiSTer_hybrid"
+printf 'ELF...hybrid_hook: ...MiSTer_hybrid registry: <binary dir>/hybrid.d...' > "$T/MiSTer_hybrid"
 python3 "$PLAT/tools/mister_platform.py" render "$PLAT/examples/cash.cow.dx/mister-port.toml" \
     --out "$F" --hook-binary "$T/MiSTer_hybrid" > /dev/null && ok || bad "render failed"
 
-for f in games/CashCowDX/launch.sh Scripts/CashCowDX.sh Scripts/CashCowDX_CoresMenu.sh linux/MiSTer_hybrid; do
+for f in games/CashCowDX/launch.sh Scripts/CashCowDX.sh Scripts/CashCowDX_CoresMenu.sh games/CashCowDX/platform/MiSTer_hybrid; do
     [ -x "$F/$f" ] && ok || bad "$f not executable"
 done
 if command -v shellcheck >/dev/null; then
     shellcheck -s bash "$F/games/CashCowDX/launch.sh" "$F"/Scripts/*.sh && ok || bad "shellcheck on rendered scripts"
 fi
-has "$F/linux/hybrid.d/CashCowDX.conf" "^launcher=/media/fat/games/CashCowDX/launch.sh$" "registry launcher"
-has "$F/linux/hybrid.d/CashCowDX.conf" "^profile=gm-fabric$" "registry profile"
+# Nothing under linux/: the Downloader refuses that root folder for every database.
+[ ! -e "$F/linux" ] && ok || bad "render wrote under linux/"
+has "$F/games/CashCowDX/platform/hybrid.d/CashCowDX.conf" "^launcher=/media/fat/games/CashCowDX/launch.sh$" "registry launcher"
+has "$F/games/CashCowDX/platform/hybrid.d/CashCowDX.conf" "^profile=gm-fabric$" "registry profile"
 has "$F/_Other/CashCowDX.mgl" "<rbf>_Other/CashCowDX</rbf>" "mgl rbf prefix"
 has "$F/Scripts/CashCowDX.sh" "missing \$GAMEDIR/CashCowDX.pck -- copy it from your GOG install" "required file check"
 
 # --- CoresMenu toggle: on, off, on again (re-enables the commented line) --------
 INI="$T/MiSTer.ini"
-# Another port already on the shared hook: its section must not read as ours.
-printf '[MiSTer]\nvideo_mode=8\n[DonutDodo]\nmain=%s\n' "$F/linux/MiSTer_hybrid" > "$INI"
-cm() { env MH_HOOK="$F/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$F/linux/hybrid.d" \
+# Another port on the platform v0.3.x shared hook: its section must not read as ours.
+printf '[MiSTer]\nvideo_mode=8\n[DonutDodo]\nmain=/media/fat/linux/MiSTer_hybrid\n' > "$INI"
+H="$F/games/CashCowDX/platform/MiSTer_hybrid"
+cm() { env MH_HOOK="$H" MH_INI="$INI" MH_REGISTRY="$F/games/CashCowDX/platform/hybrid.d" \
     MH_PLATFORM_DIR="$F/games/CashCowDX/platform" bash "$F/Scripts/CashCowDX_CoresMenu.sh" >/dev/null 2>&1; }
 cm && ok || bad "toggle on rc"
 has "$INI" "^\[CashCowDX\]$" "toggle on: section"
-has "$INI" "^main=$F/linux/MiSTer_hybrid$" "toggle on: main line"
+has "$INI" "^main=$H$" "toggle on: main line"
 cm && ok || bad "toggle off rc"
-has "$INI" "^;main=$F/linux/MiSTer_hybrid  ; disabled by CashCowDX_CoresMenu" "toggle off: commented"
+has "$INI" "^;main=$H  ; disabled by CashCowDX_CoresMenu" "toggle off: commented"
 cm && ok || bad "toggle on again rc"
 [ "$(grep -c '^\[CashCowDX\]$' "$INI")" = 1 ] && ok || bad "toggle: duplicated section"
-has "$INI" "^main=$F/linux/MiSTer_hybrid$" "toggle on again: main line"
+has "$INI" "^main=$H$" "toggle on again: main line"
 ls "$INI".bak.* >/dev/null 2>&1 && ok || bad "toggle: no backup"
-[ "$(grep -c "^main=$F/linux/MiSTer_hybrid$" "$INI")" = 2 ] && ok || bad "toggle touched the DonutDodo section"
+has "$INI" "^main=/media/fat/linux/MiSTer_hybrid$" "toggle touched the DonutDodo section"
 # Pre-platform wrapper in the section: toggle-on replaces it in place.
 printf '[CashCowDX]\nmain=/media/fat/games/CashCowDX/MiSTer_CashCowDX\n' > "$INI"
 cm && ok || bad "toggle over legacy rc"
-has "$INI" "^main=$F/linux/MiSTer_hybrid$" "toggle over legacy: main line"
+has "$INI" "^main=$H$" "toggle over legacy: main line"
 has "$INI" "^\[CashCowDX\]$" "toggle over legacy: section kept"
 grep -q "^main=/media/fat/games/CashCowDX/MiSTer_CashCowDX" "$INI" && bad "legacy main= still active" || ok
-has "$F/Scripts/CashCowDX.sh" 'case "$old_main" in /media/fat/games/CashCowDX/MiSTer_CashCowDX)' "Scripts: legacy migration"
+# Platform v0.3.x shared hook in the section: replaced in place too.
+printf '[CashCowDX]\nmain=/media/fat/linux/MiSTer_hybrid\n' > "$INI"
+cm && ok || bad "toggle over v0.3 hook rc"
+has "$INI" "^main=$H$" "toggle over v0.3 hook: main line"
+grep -q "^main=/media/fat/linux/MiSTer_hybrid" "$INI" && bad "v0.3 hook main= still active" || ok
+has "$F/Scripts/CashCowDX.sh" 'case "$old_main" in /media/fat/games/CashCowDX/MiSTer_CashCowDX|/media/fat/linux/MiSTer_hybrid)' "Scripts: legacy migration"
+has "$F/Scripts/CashCowDX.sh" '^HOOK="/media/fat/games/CashCowDX/platform/MiSTer_hybrid"$' "Scripts: per-port hook path"
+has "$F/Scripts/CashCowDX.sh" 'rm -f "/media/fat/linux/hybrid.d/$CORENAME.conf"' "Scripts: removes the v0.3 registry entry"
 printf 'stock MiSTer' > "$T/stock"
-env MH_HOOK="$T/stock" MH_INI="$T/other.ini" MH_REGISTRY="$F/linux/hybrid.d" MH_PLATFORM_DIR="$F/games/CashCowDX/platform" bash "$F/Scripts/CashCowDX_CoresMenu.sh" >/dev/null 2>&1 \
+env MH_HOOK="$T/stock" MH_INI="$T/other.ini" MH_REGISTRY="$F/games/CashCowDX/platform/hybrid.d" MH_PLATFORM_DIR="$F/games/CashCowDX/platform" bash "$F/Scripts/CashCowDX_CoresMenu.sh" >/dev/null 2>&1 \
     && bad "toggle accepted a stock MiSTer binary" || ok
 
 # --- the rendered launcher, against stubs -------------------------------------
@@ -94,12 +104,14 @@ has "$LOG" "watchdog: core changed" "rendered: watchdog"
 has "$LOG" "engine: exited (0)" "rendered: engine exit status"
 
 # --- maldita: core name with a space, gamedir, mgl, engine_log, test_env, OSD Reset
-has "$F/linux/hybrid.d/CashCowDX.conf" "^noengine=/media/fat/games/CashCowDX/NOENGINE$" "registry noengine"
-grep -q "osd_reset" "$F/linux/hybrid.d/CashCowDX.conf" && bad "cash cow registry has osd_reset (not opted in)" || ok
+has "$F/games/CashCowDX/platform/hybrid.d/CashCowDX.conf" "^noengine=/media/fat/games/CashCowDX/NOENGINE$" "registry noengine"
+grep -q "osd_reset" "$F/games/CashCowDX/platform/hybrid.d/CashCowDX.conf" && bad "cash cow registry has osd_reset (not opted in)" || ok
 M="$T/maldita"; MF="$M/media/fat"; MG="$MF/games/gmloader"
 python3 "$PLAT/tools/mister_platform.py" render "$PLAT/examples/maldita.castilla/mister-port.toml" \
     --out "$MF" --hook-binary "$T/MiSTer_hybrid" > /dev/null && ok || bad "maldita render failed"
-MREG="$MF/linux/hybrid.d/Maldita Castilla.conf"
+MREG="$MG/platform/hybrid.d/Maldita Castilla.conf"
+[ -x "$MG/platform/MiSTer_hybrid" ] && ok || bad "maldita: hook not in games/gmloader/platform"
+[ ! -e "$MF/linux" ] && ok || bad "maldita render wrote under linux/"
 has "$MREG" "^launcher=/media/fat/games/gmloader/launch.sh$" "maldita registry launcher"
 has "$MREG" "^noengine=/media/fat/games/gmloader/NOENGINE$" "maldita registry noengine"
 has "$MREG" "^osd_reset=19$" "maldita registry osd_reset"
@@ -111,9 +123,9 @@ if command -v shellcheck >/dev/null; then
 fi
 # CoresMenu on a section whose name has a space
 printf '[MiSTer]\nvideo_mode=8\n[Maldita Castilla]\nmain=/media/fat/games/gmloader/MiSTer_Maldita\n' > "$INI"
-env MH_HOOK="$MF/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$MF/linux/hybrid.d" \
+env MH_HOOK="$MG/platform/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$MG/platform/hybrid.d" \
     MH_PLATFORM_DIR="$MG/platform" bash "$MF/Scripts/MalditaCastilla_CoresMenu.sh" >/dev/null 2>&1 && ok || bad "maldita toggle rc"
-has "$INI" "^main=$MF/linux/MiSTer_hybrid$" "maldita toggle: main line"
+has "$INI" "^main=$MG/platform/MiSTer_hybrid$" "maldita toggle: main line"
 [ "$(grep -c '^\[Maldita Castilla\]$' "$INI")" = 1 ] && ok || bad "maldita toggle: duplicated section"
 
 # The rendered launcher: cwd = gamedir, engine log name, test env after the port env,
@@ -163,8 +175,8 @@ ready_pattern = "fabric bring-up"
 fail_pattern  = "fabric bring-up SOFT-FAILED"
 EOS
 python3 "$PLAT/tools/mister_platform.py" render "$S/mister-port.toml" --out "$SF" >/dev/null && ok || bad "spaced: render failed"
-has "$SF/linux/hybrid.d/Cursed Castilla.conf" "^launcher=/media/fat/games/cursedcastilla/launch.sh$" "spaced: registry"
-has "$SF/linux/hybrid.d/Cursed Castilla.conf" "^noengine=/media/fat/games/cursedcastilla/NOENGINE$" "spaced: noengine"
+has "$SF/games/cursedcastilla/platform/hybrid.d/Cursed Castilla.conf" "^launcher=/media/fat/games/cursedcastilla/launch.sh$" "spaced: registry"
+has "$SF/games/cursedcastilla/platform/hybrid.d/Cursed Castilla.conf" "^noengine=/media/fat/games/cursedcastilla/NOENGINE$" "spaced: noengine"
 has "$SF/games/cursedcastilla/launch.sh" '^MH_CORENAME="Cursed Castilla"$' "spaced: quoted corename"
 has "$SF/games/cursedcastilla/launch.sh" '^MH_FAIL_PATTERN="fabric bring-up SOFT-FAILED"$' "spaced: fail pattern"
 has "$SF/Scripts/CursedCastilla.sh" '^MH_INI_SECTION="Cursed Castilla"$' "spaced: ini section"
@@ -175,10 +187,10 @@ if command -v shellcheck >/dev/null; then
     shellcheck -s bash "$SF/games/cursedcastilla/launch.sh" "$SF"/Scripts/*.sh && ok || bad "spaced: shellcheck"
 fi
 INI="$T/spaced.ini"; printf '[Cursed Castilla]\nmain=/media/fat/games/cursedcastilla/MiSTer_CursedCastilla\n' > "$INI"
-env MH_HOOK="$F/linux/MiSTer_hybrid" MH_INI="$INI" MH_REGISTRY="$SF/linux/hybrid.d" \
+env MH_HOOK="$H" MH_INI="$INI" MH_REGISTRY="$SF/games/cursedcastilla/platform/hybrid.d" \
     MH_PLATFORM_DIR="$SF/games/cursedcastilla/platform" bash "$SF/Scripts/CursedCastilla_CoresMenu.sh" >/dev/null 2>&1 \
     && ok || bad "spaced: toggle rc"
-has "$INI" "^main=$F/linux/MiSTer_hybrid$" "spaced: toggle replaced the legacy main="
+has "$INI" "^main=$H$" "spaced: toggle replaced the legacy main="
 [ "$(grep -c '^\[Cursed Castilla\]$' "$INI")" = 1 ] && ok || bad "spaced: duplicated section"
 
 echo "render: $pass passed, $fail failed"

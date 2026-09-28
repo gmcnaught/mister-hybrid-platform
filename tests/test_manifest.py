@@ -83,13 +83,13 @@ class Manifest(unittest.TestCase):
     def test_osd_reset(self):
         out = Path(tempfile.mkdtemp())
         mp.render(mp.load_manifest(manifest(extra_launch="osd_reset = 19")), out, None)
-        conf = (out / "linux/hybrid.d/CashCowDX.conf").read_text()
+        conf = (out / "games/CashCowDX/platform/hybrid.d/CashCowDX.conf").read_text()
         self.assertIn("\nosd_reset=19\n", conf)
         self.assertIn("reset_clear=/tmp/mister-hybrid/CashCowDX.retry\n", conf)
         self.assertIn("reset_clear=/tmp/mister-hybrid/CashCowDX.lock/pid\nreset_clear=/tmp/mister-hybrid/CashCowDX.lock\n", conf)
         out2 = Path(tempfile.mkdtemp())
         mp.render(mp.load_manifest(manifest()), out2, None)
-        self.assertNotIn("osd_reset", (out2 / "linux/hybrid.d/CashCowDX.conf").read_text())
+        self.assertNotIn("osd_reset", (out2 / "games/CashCowDX/platform/hybrid.d/CashCowDX.conf").read_text())
         for bad in ("32", "-1", "true", '"19"'):
             with self.assertRaisesRegex(mp.ManifestError, "osd_reset"):
                 mp.load_manifest(manifest(extra_launch=f"osd_reset = {bad}"))

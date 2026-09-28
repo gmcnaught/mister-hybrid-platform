@@ -148,7 +148,7 @@ has "$R/taskset.log" "taskset -a -p 3 4242" "happy: process affinity restored"
 # 4. fabric wedged -> reload core via MiSTer_cmd, retry mark 1, engine stopped
 fresh CashCowDX
 echo 0x00000005 > "$R/devmem/0x3B000028"; echo 0x00000009 > "$R/devmem/0x3B000000"
-echo "main=/media/fat/linux/MiSTer_hybrid" > "$R/media/fat/MiSTer.ini"
+echo "main=/media/fat/games/CashCowDX/platform/MiSTer_hybrid" > "$R/media/fat/MiSTer.ini"
 mkfifo "$R/dev/MiSTer_cmd"
 ( exec 3<>"$R/dev/MiSTer_cmd"
   read -r l1 <&3; echo "$l1" >> "$R/cmd.log"; echo MENU > "$R/tmp/CORENAME"

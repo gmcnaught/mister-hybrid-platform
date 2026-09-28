@@ -2,8 +2,9 @@
 # shellcheck disable=SC2016  # the single-quoted arguments are awk programs
 # ini_main.sh -- read and edit the main= line of one [CORENAME] section of MiSTer.ini.
 #
-# Every hybrid port points main= at the same /media/fat/linux/MiSTer_hybrid, so a
-# file-wide grep for "main=<hook>" matches another port's section. These helpers
+# Hybrid ports point main= at a MiSTer_hybrid binary (platform v0.3.x: one shared
+# path for every port), so a file-wide grep for "main=<hook>" can match another
+# port's section. These helpers
 # only look inside [$MH_INI_SECTION]. POSIX sh + busybox awk; each edit writes a
 # temp file and renames it, after one backup per call. Lines may end in CRLF (an
 # older installer wrote [Maldita Castilla] that way on .81): comparisons ignore

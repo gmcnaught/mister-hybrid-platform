@@ -9,8 +9,14 @@
     games/<gamedir>/launch.sh               thin launcher -> platform/launch_lib.sh
     games/<gamedir>/platform/                  launch_lib.sh, mem_wc_load.sh, ini_main.sh, profile .env,
                                             mister_mem_wc.env, mister_cores.tsv, mem_wc/*.ko
-    linux/hybrid.d/<corename>.conf          MiSTer_hybrid registry entry
-    linux/MiSTer_hybrid                     only with --hook-binary
+    games/<gamedir>/platform/hybrid.d/<corename>.conf   MiSTer_hybrid registry entry
+    games/<gamedir>/platform/MiSTer_hybrid  only with --hook-binary
+
+Everything a port installs stays under its own games/<gamedir>/ (the wiki's
+standard core path), Scripts/ and _Other/. Nothing goes under linux/: the
+Downloader refuses that root folder for every database but distribution_mister,
+so update_all could not install the port. MiSTer_hybrid reads hybrid.d/ next to
+itself, so each port's copy only sees its own entry.
     Scripts/<name>.sh, Scripts/<name>_CoresMenu.sh
     _Other/<name>.mgl
 
@@ -51,7 +57,8 @@ Manifest (mister-port.toml):
     extra          = "dist/scripts-extra.sh"  # optional snippet, relative to the manifest
     legacy_main    = ["/media/fat/games/CashCowDX/MiSTer_CashCowDX"]
                      # pre-platform per-game main= wrappers: the Scripts entry moves
-                     # [corename] main= from one of these to MiSTer_hybrid, then deletes it
+                     # [corename] main= from one of these to MiSTer_hybrid, then deletes it.
+                     # LEGACY_SHARED_HOOK (platform v0.3.x) is always handled too.
 
 Command arguments and env values are emitted inside double quotes, so $MH_GAMEDIR
 and other launcher variables expand; ", \\ and ` are escaped.
@@ -78,6 +85,13 @@ FILE_RE = re.compile(r"^[A-Za-z0-9_.-]+$")
 ENV_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 # CONF_STR names as MiSTer writes them to /tmp/CORENAME, e.g. "Cursed Castilla".
 CORENAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.+-]{0,63}$")
+
+
+# Platform v0.3.x installed one shared hook and registry under linux/, which no
+# database can install. The Scripts entry moves main= off it and removes it once
+# no MiSTer.ini section uses it.
+LEGACY_SHARED_HOOK = "/media/fat/linux/MiSTer_hybrid"
+LEGACY_SHARED_REGISTRY = "/media/fat/linux/hybrid.d"
 
 
 class ManifestError(Exception):
@@ -194,21 +208,25 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     for p in legacy:
         if not re.match(r"^/media/fat/[A-Za-z0-9_./-]+$", p):
             raise ManifestError(f"[scripts] legacy_main {p!r}: expected an absolute /media/fat path")
-    legacy_main = ""
-    if legacy:
-        pats = "|".join(legacy)
-        legacy_main = (
-            "\n# --- pre-platform main= wrapper -> MiSTer_hybrid (mister-port.toml legacy_main) ---\n"
-            "if [ -x \"$HOOK\" ] && [ -f \"/media/fat/linux/hybrid.d/$CORENAME.conf\" ]; then\n"
-            "\told_main=$(mh_ini_main)\n"
-            f"\tcase \"$old_main\" in {pats})\n"
-            "\t\tmh_ini_set_main \"$HOOK\" && echo \"launcher: MiSTer.ini [$CORENAME] main=$old_main -> $HOOK\" ;;\n"
-            "\tesac\n"
-            "\t# shellcheck disable=SC2043  # one entry per legacy wrapper; often just one\n"
-            f"\tfor w in {' '.join(legacy)}; do\n"
-            "\t\t[ -f \"$w\" ] && ! grep -q \"^main=$w\" \"$MH_INI_FILE\" 2>/dev/null && rm -f \"$w\" && echo \"launcher: removed $w\"\n"
-            "\tdone\n"
-            "fi\n")
+    legacy = [*legacy, LEGACY_SHARED_HOOK]
+    pats = "|".join(legacy)
+    legacy_main = (
+        "\n# --- older main= targets -> this port's MiSTer_hybrid (mister-port.toml legacy_main,\n"
+        "# plus the platform v0.3.x shared hook under linux/) ---\n"
+        "if [ -x \"$HOOK\" ] && [ -f \"$REGISTRY\" ]; then\n"
+        "\told_main=$(mh_ini_main)\n"
+        f"\tcase \"$old_main\" in {pats})\n"
+        "\t\tmh_ini_set_main \"$HOOK\" && echo \"launcher: MiSTer.ini [$CORENAME] main=$old_main -> $HOOK\" ;;\n"
+        "\tesac\n"
+        "\t# shellcheck disable=SC2043  # one entry when the port has no legacy_main\n"
+        f"\tfor w in {' '.join(legacy)}; do\n"
+        "\t\t[ -f \"$w\" ] && ! grep -q \"^main=$w\" \"$MH_INI_FILE\" 2>/dev/null && rm -f \"$w\" && echo \"launcher: removed $w\"\n"
+        "\tdone\n"
+        f"\tif [ \"$(mh_ini_main)\" != {LEGACY_SHARED_HOOK} ] && [ -f \"{LEGACY_SHARED_REGISTRY}/$CORENAME.conf\" ]; then\n"
+        f"\t\trm -f \"{LEGACY_SHARED_REGISTRY}/$CORENAME.conf\" && echo \"launcher: removed {LEGACY_SHARED_REGISTRY}/$CORENAME.conf\"\n"
+        f"\t\trmdir {LEGACY_SHARED_REGISTRY} 2>/dev/null\n"
+        "\tfi\n"
+        "fi\n")
     # Optional launcher variables (launch_lib.sh defaults apply when absent).
     opt = [f"MH_{var}=${{MH_{var}:-{launch[key]}}}"
            for key, var in (("engine_cpus", "ENGINE_CPU"), ("stall_timeout", "STALL_S")) if key in launch]
@@ -227,6 +245,8 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     values = {
         "NAME": name, "TITLE": port["title"], "CORENAME": port["corename"], "PROFILE": prof.name,
         "GAMEDIR": gamedir, "LOGDIR": logdir, "PROCESS": launch["process"],
+        "HOOK": f"{gamedir}/platform/MiSTer_hybrid", "REGISTRY_DIR": f"{gamedir}/platform/hybrid.d",
+        "LEGACY_HOOK": LEGACY_SHARED_HOOK,
         "GDIR": gdir, "GDIR_FIRST": gdir[0], "GDIR_REST": gdir[1:],
         "OPTIONAL_VARS": "\n".join(opt), "OSD_RESET_LINES": reset_lines,
         "COMMAND": " ".join(dq(str(a)) for a in launch["command"]),
@@ -249,7 +269,7 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         written.append(p)
 
     emit(f"games/{gdir}/launch.sh", "launch.sh.in", True)
-    emit(f"linux/hybrid.d/{port['corename']}.conf", "hybrid.conf.in")
+    emit(f"games/{gdir}/platform/hybrid.d/{port['corename']}.conf", "hybrid.conf.in")
     emit(f"Scripts/{name}.sh", "Scripts.sh.in", True)
     emit(f"Scripts/{name}_CoresMenu.sh", "CoresMenu.sh.in", True)
     emit(f"_Other/{port['mgl']}.mgl", "mgl.in")
@@ -268,8 +288,7 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
             shutil.copy2(ko, plat / "mem_wc" / ko.name)
             written.append(plat / "mem_wc" / ko.name)
     if hook_binary:
-        dst = out / "linux" / "MiSTer_hybrid"
-        dst.parent.mkdir(parents=True, exist_ok=True)
+        dst = plat / "MiSTer_hybrid"
         shutil.copy2(hook_binary, dst)
         dst.chmod(0o755)
         written.append(dst)

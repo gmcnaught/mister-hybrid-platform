@@ -114,6 +114,12 @@ int main(void)
     setenv("MISTER_HYBRID_REGISTRY", dir, 1);
     CHECK(hybrid_registry_lookup(NULL, "CashCowDX", &e, err, sizeof(err)) == HYBRID_OK);
 
+    char rd[64];
+    CHECK(hybrid_registry_dir_for_exe("/media/fat/games/gmloader/platform/MiSTer_hybrid", rd, sizeof(rd)));
+    CHECK(strcmp(rd, "/media/fat/games/gmloader/platform/hybrid.d") == 0);
+    CHECK(!hybrid_registry_dir_for_exe("MiSTer_hybrid", rd, sizeof(rd)));
+    CHECK(!hybrid_registry_dir_for_exe("/a/very/long/path/that/does/not/fit/in/the/buffer/MiSTer_hybrid", rd, 16));
+
     char cmd[300];
     snprintf(cmd, sizeof(cmd), "rm -rf '%s'", dir);
     if (system(cmd) != 0) fails++;

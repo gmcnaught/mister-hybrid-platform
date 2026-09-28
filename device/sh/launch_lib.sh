@@ -38,7 +38,7 @@
 #
 # Everything before the engine starts avoids forks where a builtin does: each
 # fork costs ~10-25 ms on the A9 while MiSTer loads the core (cash.cow PLAN §6.28).
-#   MH_MAIN_HOOK (/media/fat/linux/MiSTer_hybrid)
+#   MH_MAIN_HOOK (<platform dir>/MiSTer_hybrid, as MiSTer.ini's main= names it)
 #   MH_LEGACY_ENGINES      process names of fabric engines that predate the
 #                          shared claim file (default below)
 #
@@ -70,7 +70,7 @@ mh_defaults() {
     MH_ENGINE_CPU=${MH_ENGINE_CPU:-2}
     MH_STALL_S=${MH_STALL_S:-0}
     MH_TEST_ENV=${MH_TEST_ENV:-$MH_ROOT/tmp/${MH_NAME,,}_test.env}
-    MH_MAIN_HOOK=${MH_MAIN_HOOK:-/media/fat/linux/MiSTer_hybrid}
+    MH_MAIN_HOOK=${MH_MAIN_HOOK:-${MH_PLATFORM_DIR#"$MH_ROOT"}/MiSTer_hybrid}
     MH_LOG=${MH_LOG:-$MH_LOGDIR/${MH_NAME,,}.log}
     MH_LOCKDIR="$MH_STATE_DIR/$MH_NAME.lock"
     MH_RETRY_MARK="$MH_STATE_DIR/$MH_NAME.retry"
@@ -293,7 +293,9 @@ mh_fabric_ok() {
 }
 
 # Reload the core via the menu core from a detached helper. If main= points at
-# the shared hook, the reloaded core starts a new launcher; otherwise the helper does.
+# the hook (this port's, or the platform v0.3.x one under linux/ on an install
+# whose Scripts entry has not run yet), the reloaded core starts a new launcher;
+# otherwise the helper does.
 mh_reload_core() {
     local rbf waited=0
     # shellcheck disable=SC2012,SC2086  # the glob must expand; newest first
@@ -307,7 +309,7 @@ mh_reload_core() {
         echo "load_core $1" > "$r/dev/MiSTer_cmd"
         w=0; while [ "$(cat "$r/tmp/CORENAME" 2>/dev/null)" != "$2" ] && [ $w -lt 30 ]; do sleep 1; w=$((w+1)); done
         sleep 2
-        grep -q "^main=$4" "$r/media/fat/MiSTer.ini" 2>/dev/null || exec "$3"
+        grep -q -e "^main=$4" -e "^main=/media/fat/linux/MiSTer_hybrid" "$r/media/fat/MiSTer.ini" 2>/dev/null || exec "$3"
     ' reload "$rbf" "$MH_CORENAME" "$0" "$MH_MAIN_HOOK" "$MH_ROOT" < /dev/null >> "$MH_LOG" 2>&1 &
     # Not our job any more: it may exec the next launcher, which runs for a whole
     # session, and mh_cleanup must not wait for it.

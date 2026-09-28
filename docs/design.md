@@ -118,8 +118,9 @@ mister-hybrid-platform/
   - `ml_wait_fpga_ready`, `ml_load_mem_wc`, `ml_fabric_gate`, `ml_watchdog`, `ml_cpu_isolate` / `ml_cpu_restore`, `ml_check_profile`
 - `main-hook/`: **one shared `MiSTer_hybrid` binary** in place of one Main_MiSTer build per game.
   - Today each hook compiles in its core name, launcher path and NOENGINE path (e.g. `cash.cow.dx-mister/tools/mister-wrapper/overlay/cashcow_hook.cpp:27-35`). As a result, maldita, cursed, donut and cash.cow each build and ship their own copy of Main_MiSTer @`3380931`, differing only in those strings.
-  - Proposed: the hook runs after `scheduler_wait_fpga_ready()` as it does now. It reads `/tmp/CORENAME` and looks up `/media/fat/linux/hybrid.d/<CORENAME>.conf`, which gives `launcher=`, `noengine=` and `profile=`. If there is no entry it does nothing.
-  - Installing a port means dropping in a `.conf` file and adding its `[Core] main=/media/fat/linux/MiSTer_hybrid` line to MiSTer.ini. There is one binary to rebuild when the Main_MiSTer pin moves, and one `build-hps.sh`.
+  - Proposed: the hook runs after `scheduler_wait_fpga_ready()` as it does now. It reads `/tmp/CORENAME` and looks up `hybrid.d/<CORENAME>.conf` next to its own executable, which gives `launcher=`, `noengine=` and `profile=`. If there is no entry it does nothing.
+  - Installing a port means shipping the binary plus its `.conf` in `games/<gamedir>/platform/` and adding its `[Core] main=/media/fat/games/<gamedir>/platform/MiSTer_hybrid` line to MiSTer.ini. There is one binary to rebuild when the Main_MiSTer pin moves, and one `build-hps.sh`.
+  - Revised in v0.4.0: v0.3.x put one shared copy at `linux/MiSTer_hybrid` with `linux/hybrid.d/`. The Downloader refuses the `linux/` root folder for every database except `distribution_mister`, so update_all blocked Maldita Castilla v0.4.0 (theypsilon/MultiDatabases_MiSTer#9). A per-port copy also avoids two databases claiming the same file.
   - The `child` reset (CPU mask / signal state before exec) and the reset-trigger poll (`user_io_status_trigger_take`) move into the same hook.
 - **Start-up methods to converge:**
 

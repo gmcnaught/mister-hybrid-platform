@@ -48,6 +48,28 @@ static int parse_bit(const char *val, int *out)
     return 1;
 }
 
+int hybrid_registry_dir_for_exe(const char *exe, char *out, size_t outlen)
+{
+    const char *slash = exe ? strrchr(exe, '/') : NULL;
+    if (!slash) return 0;
+    int n = snprintf(out, outlen, "%.*s/%s", (int)(slash - exe), exe, HYBRID_REGISTRY_SUBDIR);
+    return n > 0 && (size_t)n < outlen;
+}
+
+int hybrid_registry_default_dir(char *out, size_t outlen)
+{
+    const char *env = getenv("MISTER_HYBRID_REGISTRY");
+    if (env && *env) {
+        int n = snprintf(out, outlen, "%s", env);
+        return n > 0 && (size_t)n < outlen;
+    }
+    char exe[HYBRID_PATH_MAX];
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof(exe) - 1);
+    if (n <= 0) return 0;
+    exe[n] = 0;
+    return hybrid_registry_dir_for_exe(exe, out, outlen);
+}
+
 hybrid_status_t hybrid_registry_lookup(const char *dir, const char *core,
                                        hybrid_entry_t *out, char *err, size_t errlen)
 {
@@ -57,9 +79,13 @@ hybrid_status_t hybrid_registry_lookup(const char *dir, const char *core,
         set_err(err, errlen, "invalid core name", core);
         return HYBRID_BAD_CORENAME;
     }
+    char defdir[HYBRID_PATH_MAX];
     if (!dir) {
-        const char *env = getenv("MISTER_HYBRID_REGISTRY");
-        dir = (env && *env) ? env : HYBRID_REGISTRY_DIR;
+        if (!hybrid_registry_default_dir(defdir, sizeof(defdir))) {
+            set_err(err, errlen, "cannot resolve the registry directory", HYBRID_REGISTRY_MARK);
+            return HYBRID_BAD_ENTRY;
+        }
+        dir = defdir;
     }
     char path[HYBRID_PATH_MAX + 80];
     snprintf(path, sizeof(path), "%s/%s.conf", dir, core);

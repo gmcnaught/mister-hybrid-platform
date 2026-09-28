@@ -23,7 +23,7 @@ Design, inventory and migration order: [`docs/design.md`](docs/design.md).
 | `build/cmake`, `build/make` | ✅ | Cross toolchain file and make fragment with one set of Cortex-A9 flags |
 | `build/scripts/collect_runtime_libs.sh` | ✅ | Collects the DT_NEEDED closure and enforces GLIBC ≤ 2.31 |
 | `device/sh/launch_lib.sh` | ✅ | The launcher, extracted from cash.cow / donut / maldita / solarus. It runs these steps in order: core and profile check, lock, stop other fabric engines (via a claim file plus the legacy process names), wait for the FPGA, mem_wc, CPU isolation, fabric gate with core reload, watchdog |
-| `device/main-hook/` | ✅ | **One** `MiSTer_hybrid` `main=` binary for every port. It looks up `/media/fat/linux/hybrid.d/<CORENAME>.conf` and starts that port's launcher. Built against upstream Main_MiSTer `3380931`. The OSD-Reset restart that maldita has is not ported yet |
+| `device/main-hook/` | ✅ | **One** `MiSTer_hybrid` `main=` build for every port. Each port installs its own copy at `games/<gamedir>/platform/MiSTer_hybrid`. The binary looks up `hybrid.d/<CORENAME>.conf` in the same folder and starts that port's launcher. Built against upstream Main_MiSTer `3380931`. The OSD-Reset restart that maldita has is not ported yet |
 | `device/templates/` + `tools/mister_platform.py` | ✅ | `mister-platform render mister-port.toml` writes a port's `launch.sh`, `platform/`, `hybrid.d` entry, Scripts entry, CoresMenu toggle and MGL. See `examples/cash.cow.dx/` and `examples/donut.dodo/` |
 | `lib/` (libmister) | ⏳ step 3 | DDR map/WC helper, video/audio/joystick, pacing, CPU isolation |
 | `fabric/` | ⏳ step 4 | One `raster_backend_mfgpu` plus the `libmisterfabric` ABI |
@@ -65,6 +65,28 @@ python3 external/mister-hybrid-platform/tools/mister_platform.py render mister-p
 `MiSTer_hybrid` comes from the platform CI artifact, or from `device/main-hook/build-hps.sh`.
 Every port ships the same binary. The registry format ignores unknown keys, so installing
 a newer port over an older one is safe.
+
+### Install paths (platform contract)
+
+A port installs only under `games/<gamedir>/`, `Scripts/` and `_Other/`. The hook binary
+and its registry entry are at `games/<gamedir>/platform/MiSTer_hybrid` and
+`games/<gamedir>/platform/hybrid.d/<CORENAME>.conf`. `/media/fat/games/<CORE>` is the
+[standard core path](https://github.com/MiSTer-devel/Wiki_MiSTer/wiki/Core-Paths).
+
+Nothing goes under `linux/`. The Downloader (update_all) rejects `linux/`, `screenshots/`,
+`savestates/` and `downloader/` as root folders for every database except
+`distribution_mister` (`Downloader_MiSTer/src/downloader/db_entity.py`,
+`invalid_root_folders`). Platform v0.3.x used `linux/MiSTer_hybrid` and `linux/hybrid.d/`,
+so ports built on it could not be published through a MiSTer database.
+
+Each port keeps its own copy of the hook and does not share it with other ports. When two
+databases install the same path, the Downloader keeps the first one and warns. Removing
+one port would also remove the hook that another port still uses.
+
+On an existing install, the rendered Scripts entry moves `[CORENAME] main=` from
+`/media/fat/linux/MiSTer_hybrid` to the port's own hook and removes the old
+`linux/hybrid.d/<CORENAME>.conf` entry. It deletes the old binary once no `MiSTer.ini`
+section uses it. The CoresMenu toggle replaces the old `main=` line in the same way.
 
 ## Adding a new core or engine
 
