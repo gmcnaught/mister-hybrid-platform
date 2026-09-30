@@ -60,12 +60,53 @@ printf '[CashCowDX]\nmain=/media/fat/linux/MiSTer_hybrid\n' > "$INI"
 cm && ok || bad "toggle over v0.3 hook rc"
 has "$INI" "^main=$H$" "toggle over v0.3 hook: main line"
 grep -q "^main=/media/fat/linux/MiSTer_hybrid" "$INI" && bad "v0.3 hook main= still active" || ok
-has "$F/Scripts/CashCowDX.sh" 'case "$old_main" in /media/fat/games/CashCowDX/MiSTer_CashCowDX|/media/fat/linux/MiSTer_hybrid)' "Scripts: legacy migration"
+has "$F/Scripts/CashCowDX.sh" 'case "$old_main" in /media/fat/games/CashCowDX/MiSTer_CashCowDX|games/CashCowDX/MiSTer_CashCowDX|/media/fat/linux/MiSTer_hybrid|linux/MiSTer_hybrid)' "Scripts: legacy migration"
 has "$F/Scripts/CashCowDX.sh" '^HOOK="/media/fat/games/CashCowDX/platform/MiSTer_hybrid"$' "Scripts: per-port hook path"
 has "$F/Scripts/CashCowDX.sh" 'rm -f "/media/fat/linux/hybrid.d/$CORENAME.conf"' "Scripts: removes the v0.3 registry entry"
 printf 'stock MiSTer' > "$T/stock"
 env MH_HOOK="$T/stock" MH_INI="$T/other.ini" MH_REGISTRY="$F/games/CashCowDX/platform/hybrid.d" MH_PLATFORM_DIR="$F/games/CashCowDX/platform" bash "$F/Scripts/CashCowDX_CoresMenu.sh" >/dev/null 2>&1 \
     && bad "toggle accepted a stock MiSTer binary" || ok
+
+# --- legacy_main stand-in: MiSTer execs it as main= with (rbf, xml) -------------
+L="$F/games/CashCowDX/MiSTer_CashCowDX"
+[ -x "$L" ] && ok || bad "legacy stand-in not rendered/executable"
+if command -v shellcheck >/dev/null; then
+    shellcheck -s sh "$L" && ok || bad "shellcheck on the legacy stand-in"
+fi
+has "$L" '^SELF="/media/fat/games/CashCowDX/MiSTer_CashCowDX"$' "stand-in: own path"
+# Stubs record how they were exec'd; the stand-in must end in exactly one of them.
+SH="$T/stub_hook"; SS="$T/stub_stock"
+printf '#!/bin/sh\necho "hook $*" > "%s/exec.out"\n' "$T" > "$SH"
+printf '#!/bin/sh\necho "stock $*" > "%s/exec.out"\n' "$T" > "$SS"
+chmod +x "$SH" "$SS"
+lm() { rm -f "$T/exec.out"; env MH_HOOK="$SH" MH_STOCK="$SS" MH_INI="$INI" MH_LOGDIR="$T/lmlog" \
+    MH_REGISTRY="${1:-$F/games/CashCowDX/platform/hybrid.d}" MH_PLATFORM_DIR="$F/games/CashCowDX/platform" \
+    "$L" /media/fat/_Other/CashCowDX_20260101.rbf "/media/fat/_Other/Cash Cow.mgl"; }
+for form in /media/fat/games/CashCowDX/MiSTer_CashCowDX games/CashCowDX/MiSTer_CashCowDX; do
+    printf '[MiSTer]\nvideo_mode=8\n[CashCowDX]\nmain=%s\nvga_scaler=1\n' "$form" > "$INI"
+    lm
+    has "$INI" "^main=$SH$" "stand-in ($form): main= repointed"
+    has "$INI" "^vga_scaler=1$" "stand-in ($form): rest of the section kept"
+    [ "$(cat "$T/exec.out" 2>/dev/null)" = "hook /media/fat/_Other/CashCowDX_20260101.rbf /media/fat/_Other/Cash Cow.mgl" ] \
+        && ok || bad "stand-in ($form): hook not exec'd with MiSTer's args: $(cat "$T/exec.out" 2>/dev/null)"
+done
+ls "$INI".bak.* >/dev/null 2>&1 && ok || bad "stand-in: no MiSTer.ini backup"
+# A section already pointing elsewhere is left alone; the hook still runs.
+printf '[CashCowDX]\nmain=/media/fat/somewhere/else\n' > "$INI"
+lm
+has "$INI" "^main=/media/fat/somewhere/else$" "stand-in: rewrote a main= that was not its own"
+[ "$(cut -d' ' -f1 "$T/exec.out" 2>/dev/null)" = hook ] && ok || bad "stand-in: hook not exec'd over a foreign main="
+# No registry entry: stock MiSTer, MiSTer.ini untouched.
+printf '[CashCowDX]\nmain=/media/fat/games/CashCowDX/MiSTer_CashCowDX\n' > "$INI"
+lm "$T/no-such-dir"
+[ "$(cut -d' ' -f1 "$T/exec.out" 2>/dev/null)" = stock ] && ok || bad "stand-in: no stock fallback without a registry"
+has "$INI" "^main=/media/fat/games/CashCowDX/MiSTer_CashCowDX$" "stand-in: rewrote MiSTer.ini with no hook to point at"
+# Scripts entry: relative legacy form migrates; the stand-in is not deleted.
+has "$F/Scripts/CashCowDX.sh" '|games/CashCowDX/MiSTer_CashCowDX|' "Scripts: relative legacy form"
+grep -q 'rm -f "\$w"' "$F/Scripts/CashCowDX.sh" && bad "Scripts still deletes legacy_main paths (now the stand-in)" || ok
+printf '[port]\nname = "X"\nprofile = "gm-fabric"\ncorename = "CashCowDX"\n[launch]\nprocess = "x"\ncommand = ["./x"]\n[scripts]\nlegacy_main = ["/media/fat/linux/MiSTer_X"]\n' > "$T/linux.toml"
+python3 "$PLAT/tools/mister_platform.py" render "$T/linux.toml" --out "$T/linux-out" >/dev/null 2>&1 \
+    && bad "render accepted a legacy_main under linux/" || ok
 
 # --- the rendered launcher, against stubs -------------------------------------
 mkdir -p "$T/bin" "$R/tmp" "$R/proc"
