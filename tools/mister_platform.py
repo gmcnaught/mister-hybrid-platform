@@ -11,6 +11,7 @@
                                             mister_mem_wc.env, mister_cores.tsv, mem_wc/*.ko
     games/<gamedir>/platform/hybrid.d/<corename>.conf   MiSTer_hybrid registry entry
     games/<gamedir>/platform/MiSTer_hybrid  only with --hook-binary
+    <each [scripts] legacy_main path>       stand-in for a pre-platform main= wrapper
 
 Everything a port installs stays under its own games/<gamedir>/ (the wiki's
 standard core path), Scripts/ and _Other/. Nothing goes under linux/: the
@@ -63,9 +64,12 @@ Manifest (mister-port.toml):
     required_files = [ ["CashCowDX.pck", "copy it from your GOG install (see README.md)"] ]
     extra          = "dist/scripts-extra.sh"  # optional snippet, relative to the manifest
     legacy_main    = ["/media/fat/games/CashCowDX/MiSTer_CashCowDX"]
-                     # pre-platform per-game main= wrappers: the Scripts entry moves
-                     # [corename] main= from one of these to MiSTer_hybrid, then deletes it.
-                     # LEGACY_SHARED_HOOK (platform v0.3.x) is always handled too.
+                     # pre-platform per-game main= wrappers. Each path gets a rendered
+                     # stand-in (device/templates/legacy_main.sh.in) that repoints
+                     # [corename] main= at MiSTer_hybrid and execs it, so a MiSTer.ini
+                     # still naming the old wrapper keeps working after an update; the
+                     # Scripts entry makes the same move. LEGACY_SHARED_HOOK (platform
+                     # v0.3.x) is always handled by the Scripts entry too.
 
 Command arguments and env values are emitted inside double quotes, so $MH_GAMEDIR
 and other launcher variables expand; ", \\ and ` are escaped.
@@ -229,8 +233,13 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
     for p in legacy:
         if not re.match(r"^/media/fat/[A-Za-z0-9_./-]+$", p):
             raise ManifestError(f"[scripts] legacy_main {p!r}: expected an absolute /media/fat path")
+    for p in legacy:
+        if p.startswith("/media/fat/linux/"):
+            raise ManifestError(f"[scripts] legacy_main {p!r}: the Downloader cannot install under linux/")
+    port_legacy = legacy
     legacy = [*legacy, LEGACY_SHARED_HOOK]
-    pats = "|".join(legacy)
+    # MiSTer resolves a relative main= against /media/fat; older READMEs gave that form.
+    pats = "|".join(f for p in legacy for f in (p, p.removeprefix("/media/fat/")))
     legacy_main = (
         "\n# --- older main= targets -> this port's MiSTer_hybrid (mister-port.toml legacy_main,\n"
         "# plus the platform v0.3.x shared hook under linux/) ---\n"
@@ -239,10 +248,10 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         f"\tcase \"$old_main\" in {pats})\n"
         "\t\tmh_ini_set_main \"$HOOK\" && echo \"launcher: MiSTer.ini [$CORENAME] main=$old_main -> $HOOK\" ;;\n"
         "\tesac\n"
-        "\t# shellcheck disable=SC2043  # one entry when the port has no legacy_main\n"
-        f"\tfor w in {' '.join(legacy)}; do\n"
-        "\t\t[ -f \"$w\" ] && ! grep -q \"^main=$w\" \"$MH_INI_FILE\" 2>/dev/null && rm -f \"$w\" && echo \"launcher: removed $w\"\n"
-        "\tdone\n"
+        # The per-port legacy paths now hold the rendered stand-in, so only the v0.3.x
+        # shared hook is deleted.
+        f"\t[ -f {LEGACY_SHARED_HOOK} ] && ! grep -q \"^main={LEGACY_SHARED_HOOK}\" \"$MH_INI_FILE\" 2>/dev/null"
+        f" && rm -f {LEGACY_SHARED_HOOK} && echo \"launcher: removed {LEGACY_SHARED_HOOK}\"\n"
         f"\tif [ \"$(mh_ini_main)\" != {LEGACY_SHARED_HOOK} ] && [ -f \"{LEGACY_SHARED_REGISTRY}/$CORENAME.conf\" ]; then\n"
         f"\t\trm -f \"{LEGACY_SHARED_REGISTRY}/$CORENAME.conf\" && echo \"launcher: removed {LEGACY_SHARED_REGISTRY}/$CORENAME.conf\"\n"
         f"\t\trmdir {LEGACY_SHARED_REGISTRY} 2>/dev/null\n"
@@ -309,6 +318,9 @@ def render(m: dict, out: Path, hook_binary: Path | None) -> list[Path]:
         for ko in sorted((ROOT / "device/mem_wc/prebuilt").glob("*.ko")):
             shutil.copy2(ko, plat / "mem_wc" / ko.name)
             written.append(plat / "mem_wc" / ko.name)
+    for p in port_legacy:
+        values["SELF"] = p
+        emit(p.removeprefix("/media/fat/"), "legacy_main.sh.in", True)
     if hook_binary:
         dst = plat / "MiSTer_hybrid"
         shutil.copy2(hook_binary, dst)
